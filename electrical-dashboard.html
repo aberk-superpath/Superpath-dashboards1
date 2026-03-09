@@ -877,8 +877,23 @@ function renderKPIs() {
   const isFiltered = (typeof statusFilter !== 'undefined' && statusFilter !== 'all') || (typeof typeFilter !== 'undefined' && typeFilter !== 'all');
   const kpiLabelEl = document.querySelector('#tab-overview .s-label');
   if (kpiLabelEl) {
-    const filterNote = isFiltered ? ` <span style="font-size:9px;color:var(--amber);font-weight:600;text-transform:none;letter-spacing:0;margin-left:4px;">● Filtered view (${src.length} campaigns)</span>` : '';
+    const filterNote = isFiltered && src.length > 0 ? ` <span style="font-size:9px;color:var(--amber);font-weight:600;text-transform:none;letter-spacing:0;margin-left:4px;">● Filtered view (${src.length} campaigns)</span>` : '';
     kpiLabelEl.innerHTML = `Portfolio KPIs — Google Ads + CRM Lead Intelligence${filterNote}`;
+  }
+
+  // Empty state — no campaigns match the active filter
+  const kpiStrip = document.getElementById('kpiStrip');
+  if (src.length === 0) {
+    const typeLabel = (typeof typeFilter !== 'undefined' && typeFilter !== 'all') ? typeFilter : '';
+    const statusLabel = (typeof statusFilter !== 'undefined' && statusFilter !== 'all') ? statusFilter.toLowerCase() : '';
+    const parts = [statusLabel, typeLabel].filter(Boolean);
+    const desc = parts.length ? parts.join(' ') : 'selected';
+    kpiStrip.innerHTML = `<div style="grid-column:1/-1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:36px 24px;background:var(--ion-06);border:1px dashed var(--border);border-radius:10px;gap:10px;">
+      <div style="font-size:22px;">📭</div>
+      <div style="font-size:13px;font-weight:700;color:var(--nucleus);">No ${desc} campaigns in this portfolio</div>
+      <div style="font-size:11px;color:var(--nuc-45);">Try a different filter or select <strong style="color:var(--nuc-60)">All Types</strong> to see all campaigns.</div>
+    </div>`;
+    return;
   }
 
   const kpis = [
