@@ -305,16 +305,13 @@ tbody tr{cursor:pointer;}
 
     <div id="dynamicAlerts" class="alert-grid" style="grid-template-columns:1fr 1fr;"></div>
 
-    <div class="s-label">Portfolio KPIs — Google Ads + CRM Lead Intelligence</div>
-    <div class="kpi-strip" id="kpiStrip"></div>
-
     <div class="filters" style="margin-bottom:8px;">
       <span class="f-label">Status</span>
       <button class="f-btn active" id="sf-all" onclick="applyFilter('all',this)">All</button>
       <button class="f-btn" id="sf-enabled" onclick="applyFilter('Enabled',this)">Active</button>
       <button class="f-btn" id="sf-paused" onclick="applyFilter('Paused',this)">Paused</button>
     </div>
-    <div class="filters">
+    <div class="filters" style="margin-bottom:24px;">
       <span class="f-label">Type</span>
       <button class="f-btn active" id="tf-all" onclick="applyTypeFilter('all',this)">All Types</button>
       <button class="f-btn" id="tf-search" onclick="applyTypeFilter('Search',this)">Search</button>
@@ -324,6 +321,9 @@ tbody tr{cursor:pointer;}
       <button class="f-btn" id="tf-demandgen" onclick="applyTypeFilter('Demand Gen',this)">Demand Gen</button>
       <button class="f-btn" id="tf-lsa" onclick="applyTypeFilter('LSA',this)">LSA</button>
     </div>
+
+    <div class="s-label">Portfolio KPIs — Google Ads + CRM Lead Intelligence</div>
+    <div class="kpi-strip" id="kpiStrip"></div>
 
 
 
@@ -848,15 +848,17 @@ function renderDynamicAlerts() {
 }
 
 function renderKPIs() {
-  const aC    = ALL.reduce((s,r) => s+r.cost, 0);
-  const aConv = ALL.reduce((s,r) => s+r.conversions, 0);
-  const aI    = ALL.reduce((s,r) => s+r.impressions, 0);
-  const aCl   = ALL.reduce((s,r) => s+r.clicks, 0);
+  // Use filtered view for KPIs so filters cascade upward
+  const src   = (typeof view !== 'undefined' && view.length > 0) ? view : ALL;
+  const aC    = src.reduce((s,r) => s+r.cost, 0);
+  const aConv = src.reduce((s,r) => s+r.conversions, 0);
+  const aI    = src.reduce((s,r) => s+r.impressions, 0);
+  const aCl   = src.reduce((s,r) => s+r.clicks, 0);
   const blendCPC     = aCl > 0 ? aC / aCl : 0;
   const blendCPConv  = aConv > 0 ? aC / aConv : 0;
   const blendCTR     = aI > 0 ? aCl / aI * 100 : 0;
   const blendConvR   = aCl > 0 ? aConv / aCl * 100 : 0;
-  const sisData = ALL.filter(d => d.sis != null);
+  const sisData = src.filter(d => d.sis != null);
   const avgSIS  = sisData.length > 0 ? sisData.reduce((s,r) => s+r.sis, 0) / sisData.length : null;
 
   const cpcColor   = blendCPC < 30 ? 'var(--green)' : blendCPC < 45 ? 'var(--amber)' : 'var(--coma)';
@@ -865,7 +867,15 @@ function renderKPIs() {
   const convRColor = blendConvR > 15 ? 'var(--green)' : blendConvR > 8 ? 'var(--amber)' : 'var(--coma)';
   const sisColor   = avgSIS == null ? 'var(--nuc-60)' : avgSIS >= 50 ? 'var(--green)' : avgSIS >= 30 ? 'var(--amber)' : 'var(--coma)';
 
-  const activeAccounts = ALL.filter(d => d.status === 'Enabled').length;
+  const activeAccounts = src.filter(d => d.status === 'Enabled').length;
+
+  // Update KPI section label to reflect active filter
+  const isFiltered = (typeof statusFilter !== 'undefined' && statusFilter !== 'all') || (typeof typeFilter !== 'undefined' && typeFilter !== 'all');
+  const kpiLabelEl = document.querySelector('#tab-overview .s-label');
+  if (kpiLabelEl) {
+    const filterNote = isFiltered ? ` <span style="font-size:9px;color:var(--amber);font-weight:600;text-transform:none;letter-spacing:0;margin-left:4px;">● Filtered view (${src.length} campaigns)</span>` : '';
+    kpiLabelEl.innerHTML = `Portfolio KPIs — Google Ads + CRM Lead Intelligence${filterNote}`;
+  }
 
   const kpis = [
     {l:'Total Spend',      v:'$'+$K(aC),               s:'all accounts',         c:'var(--ion)'},
@@ -976,6 +986,7 @@ function applyFilters() {
     const typeOk   = typeFilter === 'all' || d.campaignType === typeFilter;
     return statusOk && typeOk;
   });
+  renderKPIs();
   renderTable();
 }
 
