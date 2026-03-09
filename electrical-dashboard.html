@@ -848,8 +848,12 @@ function renderDynamicAlerts() {
 }
 
 function renderKPIs() {
-  // Use filtered view for KPIs so filters cascade upward
-  const src   = (typeof view !== 'undefined' && view.length > 0) ? view : ALL;
+  // Compute KPI source directly from active filters (always fresh, independent of view)
+  const src = ALL.filter(d => {
+    const sOk = (typeof statusFilter === 'undefined' || statusFilter === 'all') || d.status === statusFilter;
+    const tOk = (typeof typeFilter === 'undefined'   || typeFilter === 'all')   || d.campaignType === typeFilter;
+    return sOk && tOk;
+  });
   const aC    = src.reduce((s,r) => s+r.cost, 0);
   const aConv = src.reduce((s,r) => s+r.conversions, 0);
   const aI    = src.reduce((s,r) => s+r.impressions, 0);
