@@ -139,6 +139,52 @@ tbody td{padding:11px 14px;color:var(--nuc-70);white-space:nowrap;max-width:240p
 .gap-warn{color:var(--amber);font-weight:700;}
 .gap-crit{color:var(--coma);font-weight:700;}
 
+/* OPT INSIGHTS */
+.opt-insights{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:22px;}
+.oi-card{padding:18px 20px;border-radius:10px;border:1px solid;backdrop-filter:blur(10px);}
+.oi-label{font-size:9px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:10px;}
+.oi-value{font-size:30px;font-weight:800;line-height:1;margin-bottom:5px;letter-spacing:-0.5px;}
+.oi-sub{font-size:11px;line-height:1.4;}
+.oi-red{background:rgba(199,62,29,0.07);border-color:var(--coma-30);}
+.oi-red .oi-label{color:var(--coma);}
+.oi-red .oi-value{color:var(--coma);}
+.oi-red .oi-sub{color:rgba(199,62,29,0.55);}
+.oi-amber{background:rgba(224,140,26,0.07);border-color:rgba(224,140,26,0.28);}
+.oi-amber .oi-label{color:var(--amber);}
+.oi-amber .oi-value{color:var(--amber);}
+.oi-amber .oi-sub{color:rgba(224,140,26,0.55);}
+.oi-ion{background:var(--ion-06);border-color:var(--ion-30);}
+.oi-ion .oi-label{color:var(--ion);}
+.oi-ion .oi-value{color:var(--ion);}
+.oi-ion .oi-sub{color:rgba(100,133,255,0.55);}
+.oi-green{background:rgba(59,175,96,0.07);border-color:rgba(59,175,96,0.28);}
+.oi-green .oi-label{color:var(--green);}
+.oi-green .oi-value{color:var(--green);}
+.oi-green .oi-sub{color:rgba(59,175,96,0.55);}
+
+/* CATEGORY BADGE COLORS */
+.cat-health{background:var(--coma-12)!important;color:var(--coma)!important;border-color:var(--coma-30)!important;}
+.cat-tracking{background:var(--amber-12)!important;color:var(--amber)!important;border-color:var(--amber-30)!important;}
+.cat-budget{background:var(--amber-12)!important;color:var(--amber)!important;border-color:var(--amber-30)!important;}
+.cat-conv{background:var(--amber-12)!important;color:var(--amber)!important;border-color:var(--amber-30)!important;}
+.cat-qs{background:var(--ion-12)!important;color:var(--ion)!important;border-color:var(--ion-30)!important;}
+.cat-search{background:var(--ion-12)!important;color:var(--ion)!important;border-color:var(--ion-30)!important;}
+.cat-adcov{background:var(--ion-12)!important;color:var(--ion)!important;border-color:var(--ion-30)!important;}
+.cat-adstr{background:var(--ion-12)!important;color:var(--ion)!important;border-color:var(--ion-30)!important;}
+
+/* EXPAND ROW */
+.expand-row td{padding:0!important;}
+.expand-body{padding:13px 18px 14px 18px;background:rgba(0,10,35,0.55);border-top:1px dashed var(--nuc-12);}
+.expand-label{font-size:9px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:var(--nuc-45);margin-bottom:5px;}
+.expand-text{font-size:12px;color:var(--nuc-70);line-height:1.65;}
+.expand-btn{background:none;border:none;color:var(--nuc-30);font-size:13px;cursor:pointer;padding:0 4px;line-height:1;transition:color .1s;user-select:none;font-family:'Gantari',sans-serif;}
+.expand-btn:hover{color:var(--ion);}
+tbody tr.data-row{cursor:pointer;}
+tbody tr.data-row:hover .expand-btn{color:var(--ion);}
+
+/* STICKY FILTER BAR (opt queue) */
+#tab-opts .filter-bar{position:sticky;top:0;z-index:50;background:rgba(0,15,58,0.97);backdrop-filter:blur(16px);padding:12px 0;margin-bottom:14px;border-bottom:1px solid var(--border);}
+
 /* SETUP PANEL */
 .setup-wrap{max-width:680px;margin:0 auto;}
 .setup-card{background:var(--ion-06);border:1px solid var(--border);border-radius:12px;padding:32px 36px;}
@@ -272,6 +318,7 @@ tbody td{padding:11px 14px;color:var(--nuc-70);white-space:nowrap;max-width:240p
        TAB 2: OPTIMIZATION QUEUE
   ══════════════════════════════════════════ -->
   <div id="tab-opts" class="t-panel">
+    <div class="opt-insights" id="opt-insights"></div>
     <div class="filter-bar">
       <span class="f-label">Account:</span>
       <select class="f-select" id="opt-acct-filter" onchange="renderOptTable()">
@@ -450,6 +497,7 @@ function processAll() {
   renderAccountTable();
   renderCampaignTable();
   renderOptTable();
+  renderOptInsights();
   renderOptBadge();
   checkP1Alert();
   updateTimestamp();
@@ -734,6 +782,37 @@ function generateOpts() {
     }
   });
 
+  // ── P1: EXTREME CPA ───────────────────────────────────────
+  // CPA > $350 AND conv > 0 AND cost > $200
+  camps.forEach(r => {
+    const cost = num(r.cost);
+    const conv = num(r.conversions);
+    const cpa  = conv > 0 ? cost / conv : 0;
+    if (cpa > 350 && conv > 0 && cost > 200 && r.campaign_status === 'ENABLED') {
+      opts.push({
+        priority: 'P1', account_id: r.account_id, account_name: r.account_name,
+        category: 'Conversion',
+        issue: `"${r.campaign_name}" — CPA $${fmtNum(cpa, 0)} on ${fmtNum(conv, 1)} conv ($${fmtNum(cost, 0)} spend)`,
+        recommendation: 'Review bidding strategy, landing page quality, and keyword intent — CPA exceeds $350 threshold. Consider pausing or restructuring campaign.',
+        impact: `$${fmtNum(cpa, 0)} CPA — likely above client target`
+      });
+    }
+  });
+
+  // ── P1: HIGH SPEND, ZERO CONVERSIONS ──────────────────────
+  // Cost > $300, 0 conv, enabled — escalated severity
+  camps.forEach(r => {
+    if (num(r.conversions) === 0 && num(r.cost) > 300 && r.campaign_status === 'ENABLED' && num(r.impressions) > 0) {
+      opts.push({
+        priority: 'P1', account_id: r.account_id, account_name: r.account_name,
+        category: 'Conversion',
+        issue: `"${r.campaign_name}" — $${fmtNum(num(r.cost), 0)} spend, 0 conversions in 30 days`,
+        recommendation: 'Pause and audit: check conversion tracking, landing page experience, keyword intent, and ad relevance before resuming spend',
+        impact: `$${fmtNum(num(r.cost), 0)} at risk with no measurable return`
+      });
+    }
+  });
+
   // ── P2: BUDGET LIMITED ────────────────────────────────────
   // IS lost to budget > 25%, spend > $10
   camps.forEach(r => {
@@ -909,21 +988,32 @@ function renderOptTable() {
     return;
   }
 
-  const rows = opts.map(o => `
-    <tr>
+  const rows = opts.map(o => {
+    const catCls = catBadgeClass(o.category);
+    return `
+    <tr class="data-row" onclick="toggleExpand(this)">
       <td><span class="badge badge-${o.priority.toLowerCase()}">${o.priority}</span></td>
       <td class="td-name">${esc(o.account_name)}</td>
-      <td><span class="badge badge-paused" style="text-transform:none;letter-spacing:0">${esc(o.category)}</span></td>
+      <td><span class="badge ${catCls}" style="text-transform:none;letter-spacing:0">${esc(o.category)}</span></td>
       <td><div class="issue-text">${esc(o.issue)}</div></td>
-      <td><div class="rec-text">${esc(o.recommendation)}</div></td>
       <td><div class="impact-text">${esc(o.impact)}</div></td>
-    </tr>`).join('');
+      <td><button class="expand-btn" onclick="event.stopPropagation();toggleExpand(this.closest('tr'))">▸</button></td>
+    </tr>
+    <tr class="expand-row" style="display:none">
+      <td colspan="6">
+        <div class="expand-body">
+          <div class="expand-label">Recommendation</div>
+          <div class="expand-text">${esc(o.recommendation)}</div>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
 
   document.getElementById('opt-table-wrap').innerHTML = `
     <table>
       <thead><tr>
         <th>Priority</th><th>Account</th><th>Category</th>
-        <th>Issue</th><th>Recommendation</th><th>Est. Impact</th>
+        <th>Issue</th><th>Est. Impact</th><th style="width:36px"></th>
       </tr></thead>
       <tbody>${rows}</tbody>
     </table>`;
@@ -973,6 +1063,76 @@ function renderOptBadge() {
   if (OPTS.length > 0) {
     el.innerHTML = ` <span style="display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;font-size:9px;font-weight:800;background:${p1 > 0 ? 'var(--coma)' : 'var(--ion)'};color:#fff;">${OPTS.length}</span>`;
   }
+}
+
+// ─── OPT INSIGHTS ─────────────────────────────────────────────
+function renderOptInsights() {
+  const p1 = OPTS.filter(o => o.priority === 'P1').length;
+  const p2 = OPTS.filter(o => o.priority === 'P2').length;
+  const totalAccts  = Object.values(ACCT_ROLLUPS).length;
+  const flaggedAccts = new Set(OPTS.map(o => o.account_id)).size;
+
+  // Estimate inefficient spend: zero-conv search terms (≥$25) + zero-conv enabled campaigns (>$20/day)
+  let wastedSpend = 0;
+  (DATA.searchtermsLatest || []).forEach(r => {
+    if (num(r.conversions) === 0 && num(r.cost) >= 25) wastedSpend += num(r.cost);
+  });
+  (DATA.campaignLatest || []).forEach(r => {
+    if (num(r.conversions) === 0 && (num(r.cost) / 30) > 20 && r.campaign_status === 'ENABLED' && num(r.impressions) > 0) {
+      wastedSpend += num(r.cost);
+    }
+  });
+
+  const p1Card = p1 > 0 ? 'oi-red' : 'oi-green';
+  const p1Sub  = p1 > 0 ? 'Require immediate attention' : 'No critical issues';
+  const el = document.getElementById('opt-insights');
+  if (!el) return;
+  el.innerHTML = `
+    <div class="oi-card ${p1Card}">
+      <div class="oi-label">P1 Critical</div>
+      <div class="oi-value">${p1}</div>
+      <div class="oi-sub">${p1Sub}</div>
+    </div>
+    <div class="oi-card oi-amber">
+      <div class="oi-label">P2 High Priority</div>
+      <div class="oi-value">${p2}</div>
+      <div class="oi-sub">Optimizations to action this week</div>
+    </div>
+    <div class="oi-card oi-ion">
+      <div class="oi-label">Accounts Flagged</div>
+      <div class="oi-value">${flaggedAccts}<span style="font-size:16px;font-weight:500;opacity:0.6"> / ${totalAccts}</span></div>
+      <div class="oi-sub">Have at least one optimization opportunity</div>
+    </div>
+    <div class="oi-card oi-amber">
+      <div class="oi-label">Est. Inefficient Spend</div>
+      <div class="oi-value">$${fmtNum(wastedSpend, 0)}</div>
+      <div class="oi-sub">Zero-conv campaigns + search terms (30d)</div>
+    </div>`;
+}
+
+// ─── CATEGORY BADGE CLASS ─────────────────────────────────────
+function catBadgeClass(cat) {
+  const m = {
+    'Account Health': 'cat-health',
+    'Tracking':       'cat-tracking',
+    'Budget':         'cat-budget',
+    'Conversion':     'cat-conv',
+    'Quality Score':  'cat-qs',
+    'Search Terms':   'cat-search',
+    'Ad Coverage':    'cat-adcov',
+    'Ad Strength':    'cat-adstr'
+  };
+  return m[cat] || 'badge-paused';
+}
+
+// ─── EXPAND ROW TOGGLE ────────────────────────────────────────
+function toggleExpand(row) {
+  const next = row.nextElementSibling;
+  if (!next || !next.classList.contains('expand-row')) return;
+  const isOpen = next.style.display !== 'none';
+  next.style.display = isOpen ? 'none' : '';
+  const btn = row.querySelector('.expand-btn');
+  if (btn) btn.textContent = isOpen ? '▸' : '▾';
 }
 
 // ─── MISC ─────────────────────────────────────────────────────
