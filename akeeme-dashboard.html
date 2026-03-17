@@ -444,7 +444,7 @@ function allConfigured() {
 function loadInputs() {
   Object.keys(SK).forEach(k => {
     const el = document.getElementById('u-' + k);
-    if (el) el.value = localStorage.getItem(SK[k]) || '';
+    if (el) el.value = localStorage.getItem(SK[k]) || DEFAULT_URLS[k] || '';
   });
 }
 
