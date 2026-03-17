@@ -260,6 +260,7 @@ tbody tr.data-row:hover .expand-btn{color:var(--ion);}
 <main>
   <div class="tabs">
     <button class="t-btn active" onclick="switchTab('kpis')">Portfolio KPIs</button>
+    <button class="t-btn" onclick="switchTab('camps')">Campaigns</button>
     <button class="t-btn" onclick="switchTab('opts')">Optimization Queue <span id="opt-badge"></span></button>
     <button class="t-btn" onclick="switchTab('setup')">Data Source</button>
   </div>
@@ -287,9 +288,13 @@ tbody tr.data-row:hover .expand-btn{color:var(--ion);}
 
     <div class="s-label">Account Performance</div>
     <div class="filter-bar">
-      <span class="f-label">Filter:</span>
-      <button class="f-btn active" onclick="filterAccountTable('all',this)">All Accounts</button>
-      <button class="f-btn" onclick="filterAccountTable('issues',this)">Has Issues</button>
+      <span class="f-label">Account:</span>
+      <select class="f-select" id="acct-acct-filter" onchange="filterAccountTable('single',null,this.value)">
+        <option value="all">All Accounts</option>
+      </select>
+      <span class="f-label">Show:</span>
+      <button class="f-btn active" onclick="filterAccountTable('all',this)">All</button>
+      <button class="f-btn" onclick="filterAccountTable('p1p2',this)">Has P1/P2 Issues</button>
       <button class="f-btn" onclick="filterAccountTable('gap',this)">Tracking Gap</button>
       <select class="f-select" id="acct-sort-select" onchange="sortAccountTable(this.value)">
         <option value="cost">Sort: Spend</option>
@@ -302,8 +307,13 @@ tbody tr.data-row:hover .expand-btn{color:var(--ion);}
     <div class="tbl-wrap" id="account-table-wrap">
       <div class="empty-state">Loading accounts...</div>
     </div>
+  </div>
 
-    <div class="s-label">Campaign Breakdown</div>
+  <!-- ══════════════════════════════════════════
+       TAB 2: CAMPAIGNS
+  ══════════════════════════════════════════ -->
+  <div id="tab-camps" class="t-panel">
+    <div class="s-label">Campaign Breakdown — Last 30 Days</div>
     <div class="filter-bar" id="campaign-filters">
       <span class="f-label">Account:</span>
       <select class="f-select" id="camp-acct-filter" onchange="renderCampaignTable()">
@@ -606,11 +616,25 @@ function renderKPIs() {
 
 // ─── ACCOUNT TABLE ────────────────────────────────────────────
 let ACCT_DISPLAY_FILTER = 'all';
+let ACCT_SINGLE_ID      = 'all';
 
-function filterAccountTable(filter, btn) {
-  ACCT_DISPLAY_FILTER = filter;
-  document.querySelectorAll('.filter-bar .f-btn[onclick*="filterAccountTable"]').forEach(b => b.classList.remove('active'));
-  if (btn) btn.classList.add('active');
+function filterAccountTable(filter, btn, singleId) {
+  if (filter === 'single') {
+    ACCT_SINGLE_ID = singleId || 'all';
+    // When using dropdown, clear the show-filter buttons
+    if (ACCT_SINGLE_ID !== 'all') {
+      ACCT_DISPLAY_FILTER = 'all';
+      document.querySelectorAll('.filter-bar .f-btn[onclick*="filterAccountTable"]').forEach(b => b.classList.remove('active'));
+      document.querySelector('.filter-bar .f-btn[onclick*="filterAccountTable(\'all\'"]')?.classList.add('active');
+    }
+  } else {
+    ACCT_DISPLAY_FILTER = filter;
+    ACCT_SINGLE_ID = 'all';
+    const dd = document.getElementById('acct-acct-filter');
+    if (dd) dd.value = 'all';
+    document.querySelectorAll('.filter-bar .f-btn[onclick*="filterAccountTable"]').forEach(b => b.classList.remove('active'));
+    if (btn) btn.classList.add('active');
+  }
   renderAccountTable();
 }
 
@@ -622,10 +646,15 @@ function sortAccountTable(col) {
 function renderAccountTable() {
   let accounts = Object.values(ACCT_ROLLUPS);
 
-  // Filter
-  if (ACCT_DISPLAY_FILTER === 'issues') {
-    const acctIdsWithOpts = new Set(OPTS.map(o => o.account_id));
-    accounts = accounts.filter(a => acctIdsWithOpts.has(a.account_id));
+  // Single account dropdown filter
+  if (ACCT_SINGLE_ID !== 'all') {
+    accounts = accounts.filter(a => a.account_id === ACCT_SINGLE_ID);
+  }
+
+  // Show-filter buttons
+  if (ACCT_DISPLAY_FILTER === 'p1p2') {
+    const acctIdsWithHighOpts = new Set(OPTS.filter(o => o.priority === 'P1' || o.priority === 'P2').map(o => o.account_id));
+    accounts = accounts.filter(a => acctIdsWithHighOpts.has(a.account_id));
   } else if (ACCT_DISPLAY_FILTER === 'gap') {
     accounts = accounts.filter(a => {
       const cr = getCRData(a.account_id);
@@ -1033,7 +1062,7 @@ function renderOptTable() {
 // ─── ACCOUNT DROPDOWNS ────────────────────────────────────────
 function populateAccountDropdowns() {
   const accounts = Object.values(ACCT_ROLLUPS).sort((a, b) => a.account_name.localeCompare(b.account_name));
-  const selects = ['camp-acct-filter', 'opt-acct-filter'];
+  const selects = ['acct-acct-filter', 'camp-acct-filter', 'opt-acct-filter'];
   selects.forEach(id => {
     const sel = document.getElementById(id);
     // Remove existing options beyond "All"
@@ -1240,7 +1269,7 @@ function updateTimestamp() {
 
 function switchTab(name) {
   document.querySelectorAll('.t-btn').forEach((b, i) => {
-    const tabs = ['kpis','opts','setup'];
+    const tabs = ['kpis','camps','opts','setup'];
     b.classList.toggle('active', tabs[i] === name);
   });
   document.querySelectorAll('.t-panel').forEach(p => p.classList.remove('active'));
