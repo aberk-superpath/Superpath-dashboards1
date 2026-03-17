@@ -59,13 +59,20 @@ main{position:relative;z-index:1;padding:32px 44px 52px;max-width:1720px;margin:
 .s-label::after{content:'';flex:1;height:1px;background:var(--border);}
 
 /* ALERTS */
-.alert{display:flex;gap:14px;padding:16px 20px;border-radius:10px;border:1px solid;backdrop-filter:blur(10px);margin-bottom:20px;}
-.a-icon{font-size:18px;flex-shrink:0;line-height:1.3;}
-.a-title{font-size:10px;font-weight:800;letter-spacing:1.2px;text-transform:uppercase;margin-bottom:4px;}
-.a-body{font-size:12px;color:var(--nuc-60);line-height:1.6;}
+.alert-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:24px;}
+.alert{display:flex;gap:14px;padding:17px 20px;border-radius:10px;border:1px solid;backdrop-filter:blur(10px);}
+.a-icon{font-size:19px;flex-shrink:0;line-height:1.25;}
+.a-title{font-size:10px;font-weight:800;letter-spacing:1.2px;text-transform:uppercase;margin-bottom:5px;}
+.a-body{font-size:12px;color:var(--nuc-60);line-height:1.65;}
 .a-body strong{color:var(--nucleus);font-weight:600;}
 .a-red{background:rgba(199,62,29,0.07);border-color:var(--coma-30);}
 .a-red .a-title{color:var(--coma);}
+.a-amber{background:rgba(224,140,26,0.07);border-color:rgba(224,140,26,0.28);}
+.a-amber .a-title{color:var(--amber);}
+.a-green{background:rgba(59,175,96,0.07);border-color:rgba(59,175,96,0.28);}
+.a-green .a-title{color:var(--green);}
+.a-ion{background:var(--ion-06);border-color:var(--ion-30);}
+.a-ion .a-title{color:var(--ion);}
 
 /* KPI STRIP */
 .kpi-strip{display:grid;grid-template-columns:repeat(9,1fr);gap:10px;margin-bottom:28px;}
@@ -84,8 +91,9 @@ main{position:relative;z-index:1;padding:32px 44px 52px;max-width:1720px;margin:
 .f-btn{font-family:'Gantari',sans-serif;font-size:11px;font-weight:600;padding:6px 14px;border-radius:6px;border:1px solid var(--border);background:var(--ion-06);color:var(--nuc-60);cursor:pointer;transition:all .15s;white-space:nowrap;}
 .f-btn:hover{color:var(--nucleus);border-color:var(--ion-30);}
 .f-btn.active{background:var(--ion-12);border-color:var(--ion-30);color:var(--ion);}
-.f-select{font-family:'Gantari',sans-serif;font-size:11px;font-weight:600;padding:6px 12px;border-radius:6px;border:1px solid var(--border);background:var(--ion-06);color:var(--nuc-60);cursor:pointer;outline:none;}
-.f-select:focus{border-color:var(--ion-30);color:var(--nucleus);}
+.f-select{font-family:'Gantari',sans-serif;font-size:11px;font-weight:600;padding:6px 12px;border-radius:6px;border:1px solid var(--border);background:var(--ion-06);color:var(--nucleus);cursor:pointer;outline:none;}
+.f-select:focus{border-color:var(--ion-30);}
+.f-select option{background:#000F3A;color:var(--nucleus);}
 .f-search{font-family:'Gantari',sans-serif;font-size:11px;padding:6px 12px;border-radius:6px;border:1px solid var(--border);background:var(--ion-06);color:var(--nucleus);outline:none;min-width:200px;}
 .f-search::placeholder{color:var(--nuc-30);}
 .f-search:focus{border-color:var(--ion-30);}
@@ -274,6 +282,8 @@ tbody tr.data-row:hover .expand-btn{color:var(--ion);}
       <div class="kpi"><div class="k-label">Total CR Calls</div><div class="k-value" id="k-calls">—</div><div class="k-sub">30-day</div></div>
       <div class="kpi kpi-red"><div class="k-label">Opt Flags</div><div class="k-value" id="k-opts">—</div><div class="k-sub" id="k-opts-sub">—</div></div>
     </div>
+
+    <div id="portfolio-alerts" class="alert-grid" style="display:none"></div>
 
     <div class="s-label">Account Performance</div>
     <div class="filter-bar">
@@ -494,6 +504,7 @@ function processAll() {
 
   // Render everything
   renderKPIs();
+  renderPortfolioAlerts();
   renderAccountTable();
   renderCampaignTable();
   renderOptTable();
@@ -1063,6 +1074,92 @@ function renderOptBadge() {
   if (OPTS.length > 0) {
     el.innerHTML = ` <span style="display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;font-size:9px;font-weight:800;background:${p1 > 0 ? 'var(--coma)' : 'var(--ion)'};color:#fff;">${OPTS.length}</span>`;
   }
+}
+
+// ─── PORTFOLIO ALERTS (KPIs tab) ──────────────────────────────
+function renderPortfolioAlerts() {
+  const accts = Object.values(ACCT_ROLLUPS).filter(a => a.cost > 0);
+  if (!accts.length) return;
+  const alerts = [];
+
+  const withConv  = accts.filter(a => a.conversions > 0 && a.cpa > 0);
+  const avgCPA    = withConv.length ? withConv.reduce((s, a) => s + a.cpa, 0) / withConv.length : 0;
+  const avgCTR    = accts.reduce((s, a) => s + a.ctr, 0) / accts.length;
+  const isAccts   = accts.filter(a => a.avg_is > 0);
+  const avgIS     = isAccts.length ? isAccts.reduce((s, a) => s + a.avg_is, 0) / isAccts.length : 0;
+
+  // Best performer — lowest CPA with decent volume
+  if (withConv.length && avgCPA > 0) {
+    const best = withConv.reduce((a, b) => a.cpa < b.cpa ? a : b);
+    const pct  = Math.round((1 - best.cpa / avgCPA) * 100);
+    if (pct > 20) alerts.push({
+      cls: 'a-green', icon: '🏆',
+      title: 'Top Performer — ' + best.account_name,
+      body: `CPA of <strong>$${fmtNum(best.cpa, 0)}</strong> is <strong>${pct}% below</strong> portfolio average ($${fmtNum(avgCPA, 0)}). ${fmtNum(best.conversions, 1)} conversions on $${fmtNum(best.cost, 0)} spend.`
+    });
+  }
+
+  // High CPA outlier
+  if (withConv.length > 1 && avgCPA > 0) {
+    const worst = withConv.reduce((a, b) => a.cpa > b.cpa ? a : b);
+    const pct   = Math.round((worst.cpa / avgCPA - 1) * 100);
+    if (pct > 40) alerts.push({
+      cls: 'a-red', icon: '🚨',
+      title: 'High CPA — ' + worst.account_name,
+      body: `CPA of <strong>$${fmtNum(worst.cpa, 0)}</strong> is <strong>${pct}% above</strong> portfolio average ($${fmtNum(avgCPA, 0)}). Review bid strategy, keyword intent, and landing page quality.`
+    });
+  }
+
+  // Low impression share
+  if (avgIS > 0) {
+    const lowIS = accts.filter(a => a.avg_is > 0 && a.avg_is < avgIS * 0.5 && a.cost > 300);
+    if (lowIS.length) {
+      const bottom = lowIS.reduce((a, b) => a.avg_is < b.avg_is ? a : b);
+      alerts.push({
+        cls: 'a-amber', icon: '👁',
+        title: 'Low Impression Share — ' + bottom.account_name,
+        body: `Search impression share of <strong>${fmtNum(bottom.avg_is, 1)}%</strong> vs portfolio average (${fmtNum(avgIS, 1)}%). Likely budget-constrained or low Ad Rank — review budget cap and Quality Scores.`
+      });
+    }
+  }
+
+  // Low CTR
+  if (avgCTR > 0) {
+    const lowCTR = accts.filter(a => a.ctr < avgCTR * 0.45 && a.impressions > 2000);
+    if (lowCTR.length) {
+      const bottom = lowCTR.reduce((a, b) => a.ctr < b.ctr ? a : b);
+      alerts.push({
+        cls: 'a-amber', icon: '📉',
+        title: 'Low CTR — ' + bottom.account_name,
+        body: `CTR of <strong>${fmtNum(bottom.ctr, 2)}%</strong> is well below portfolio average (${fmtNum(avgCTR, 2)}%). Ad copy refresh or keyword match type audit recommended.`
+      });
+    }
+  }
+
+  // Strong CTR standout
+  if (avgCTR > 0) {
+    const highCTR = accts.filter(a => a.ctr > avgCTR * 1.5 && a.impressions > 1000 && a.conversions >= 2);
+    if (highCTR.length) {
+      const top = highCTR.reduce((a, b) => a.ctr > b.ctr ? a : b);
+      const pct = Math.round((top.ctr / avgCTR - 1) * 100);
+      alerts.push({
+        cls: 'a-ion', icon: '💡',
+        title: 'Strong CTR — ' + top.account_name,
+        body: `CTR of <strong>${fmtNum(top.ctr, 2)}%</strong> is <strong>${pct}% above</strong> portfolio average (${fmtNum(avgCTR, 2)}%). Ad copy and keyword match types are working — consider as a template for other accounts.`
+      });
+    }
+  }
+
+  const order = { 'a-red': 0, 'a-amber': 1, 'a-green': 2, 'a-ion': 3 };
+  const top4  = alerts.sort((a, b) => (order[a.cls] || 9) - (order[b.cls] || 9)).slice(0, 4);
+
+  const el = document.getElementById('portfolio-alerts');
+  if (!el) return;
+  if (!top4.length) { el.style.display = 'none'; return; }
+  el.style.display = '';
+  el.innerHTML = top4.map(a =>
+    `<div class="alert ${a.cls}"><div class="a-icon">${a.icon}</div><div><div class="a-title">${a.title}</div><div class="a-body">${a.body}</div></div></div>`
+  ).join('');
 }
 
 // ─── OPT INSIGHTS ─────────────────────────────────────────────
