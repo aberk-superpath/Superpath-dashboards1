@@ -209,6 +209,12 @@ tbody tr.data-row:hover .expand-btn{color:var(--ion);}
 .setup-note{font-size:11px;color:var(--nuc-45);margin-top:20px;line-height:1.7;padding:12px 16px;border:1px solid var(--nuc-12);border-radius:8px;}
 .setup-note code{font-family:monospace;background:var(--nuc-08);padding:1px 5px;border-radius:3px;font-size:10px;}
 
+/* REFRESH BUTTON */
+.btn-refresh{font-family:'Gantari',sans-serif;font-size:11px;font-weight:700;padding:6px 14px;background:var(--ion-12);border:1px solid var(--ion-30);border-radius:7px;color:var(--ion);cursor:pointer;display:flex;align-items:center;gap:6px;transition:all .15s;}
+.btn-refresh:hover{background:var(--ion-30);}
+.btn-refresh.spinning .refresh-icon{animation:spin 0.8s linear infinite;display:inline-block;}
+.refresh-icon{font-size:13px;line-height:1;}
+
 /* LOADING */
 #loading{position:fixed;inset:0;background:rgba(0,15,58,0.85);display:flex;align-items:center;justify-content:center;z-index:1000;backdrop-filter:blur(8px);}
 .loading-inner{text-align:center;}
@@ -251,6 +257,7 @@ tbody tr.data-row:hover .expand-btn{color:var(--ion);}
   <div class="hdr-right">
     <div class="hdr-meta">
       <span class="hdr-label" id="last-updated">—</span>
+      <button class="btn-refresh" id="refresh-btn" onclick="refreshData()"><span class="refresh-icon">↻</span> Refresh</button>
       <span class="v-chip">Strategist Dashboard</span>
     </div>
   </div>
@@ -486,7 +493,15 @@ function fetchAll() {
     results.forEach(({ key, rows }) => DATA[key] = rows);
     processAll();
     hide('loading');
+    const btn = document.getElementById('refresh-btn');
+    if (btn) btn.classList.remove('spinning');
   });
+}
+
+function refreshData() {
+  const btn = document.getElementById('refresh-btn');
+  if (btn) btn.classList.add('spinning');
+  fetchAll();
 }
 
 // ─── PROCESSING ───────────────────────────────────────────────
