@@ -1,5 +1,5 @@
 // ============================================================
-// NATASHA DASHBOARD — CallRail Data Puller
+// GAURAV DASHBOARD — CallRail Data Puller
 // Install as a standalone Google Apps Script
 // (NOT bound to the sheet — standalone script with SHEET_ID)
 //
@@ -15,7 +15,7 @@
 var CR_CONFIG = {
   API_KEY:    'YOUR_CALLRAIL_API_KEY',
   ACCOUNT_ID: 'YOUR_CALLRAIL_ACCOUNT_ID',
-  SHEET_ID:   'YOUR_GOOGLE_SHEET_ID',
+  SHEET_ID:   'PASTE_GAURAV_SHEET_ID_HERE',
   TIMEZONE:   'America/New_York',
   LOOKBACK_DAYS: 30,
   PER_PAGE:   250
@@ -28,6 +28,45 @@ var CR_HEADERS = {
   accountMap: ['callrail_company_name','ads_account_id','notes']
 };
 
+// ─── account_map tab — populate in the Sheet with these rows ──
+// (callrail_company_name must match exactly what CallRail shows)
+//
+// Superpath MCC accounts:
+//   1 Point Electric                    | 428-467-1850
+//   Auburn Leach K9 Solutions           | 410-807-3491
+//   Bob Larson Plumbing                 | 904-107-5919
+//   Broadco                             | 988-418-1651
+//   Byers Electric Service Team         | 656-136-9007
+//   C.W.Fischer Electric                | 413-360-8484
+//   Country Meadows                     | 595-548-0486
+//   Discount Office                     | 164-060-4631
+//   EMC Electric, Inc                   | 645-934-8768
+//   GHome                               | 792-974-6795
+//   Hallmark Tree Service               | 759-738-9590
+//   Hassle Free Lawns                   | 385-306-5831
+//   Industrial Resin Recycling          | 278-232-9441
+//   Kraus Tile & Bath                   | 802-179-9249
+//   Mansea Metal                        | 820-249-0394
+//   Schonsheck                          | 306-437-9996
+//   The Pampered House Maid Services    | 230-396-6254
+//   Underwood Plumbing                  | 843-364-4227
+//   Maggie's Wigs 4 Kids of Michigan    | 740-352-7070
+//
+// Bell Media MCC accounts:
+//   Alabama Power                       | 592-109-8560
+//   Bromberg & Co Inc.                  | 204-572-9484
+//   Hawker Powersource                  | 919-746-5666
+//   Infinity Med-I-Spa                  | 161-268-8539
+//   Koch Dentistry                      | 551-410-7788
+//   Shelby Dental                       | 992-412-9662
+//
+// Note: CallRail company names above are starting points — verify against
+// exact names in CallRail and adjust as needed.
+//
+// Unresolved (not found in either MCC — may be Meta-only or pending setup):
+//   Arca Aesthetics, Ellery Milan Beauty, MN Express, Pink Pony Pub,
+//   Southern Carriers Inc., Studio 4955 Aesthetics, Trinity Medical Solutions
+
 // ─── MAIN ENTRY ───────────────────────────────────────────────
 function pullCallRailData() {
   var ss       = SpreadsheetApp.openById(CR_CONFIG.SHEET_ID);
@@ -37,24 +76,21 @@ function pullCallRailData() {
   var today     = fmtDate(0);
   var startDate = fmtDate(CR_CONFIG.LOOKBACK_DAYS);
 
-  // Load company → Google Ads account ID mapping from account_map tab
   var mapping = buildMapping(mapSheet);
 
-  // Fetch all CallRail companies, then filter to only those in account_map
   var allCompanies = fetchCompanies();
   Logger.log('CallRail total companies: ' + allCompanies.length);
 
   var companies = allCompanies.filter(function(c) {
     return !!mapping[c.name.toLowerCase().trim()];
   });
-  Logger.log('Mapped to Natasha accounts: ' + companies.length);
+  Logger.log('Mapped to Gaurav accounts: ' + companies.length);
 
   if (!companies.length) {
     Logger.log('No mapped companies found — fill in the account_map tab first.');
     return;
   }
 
-  // Remove today's existing rows (safe re-run)
   clearTodayRows(crSheet, today);
 
   var newRows = [];
@@ -222,15 +258,12 @@ function fmtDate(daysAgo) {
 }
 
 // ─── TRIGGER SETUP (run once) ─────────────────────────────────
-// Run this function manually one time to install the daily 7 AM trigger.
 function setupTrigger() {
-  // Remove any existing triggers for pullCallRailData
   ScriptApp.getProjectTriggers().forEach(function(t) {
     if (t.getHandlerFunction() === 'pullCallRailData') {
       ScriptApp.deleteTrigger(t);
     }
   });
-  // Create new daily trigger at 7 AM ET
   ScriptApp.newTrigger('pullCallRailData')
     .timeBased()
     .everyDays(1)

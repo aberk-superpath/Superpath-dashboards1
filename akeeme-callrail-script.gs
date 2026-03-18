@@ -1,5 +1,5 @@
 // ============================================================
-// NATASHA DASHBOARD — CallRail Data Puller
+// AKEEME DASHBOARD — CallRail Data Puller
 // Install as a standalone Google Apps Script
 // (NOT bound to the sheet — standalone script with SHEET_ID)
 //
@@ -47,7 +47,7 @@ function pullCallRailData() {
   var companies = allCompanies.filter(function(c) {
     return !!mapping[c.name.toLowerCase().trim()];
   });
-  Logger.log('Mapped to Natasha accounts: ' + companies.length);
+  Logger.log('Mapped to Akeeme accounts: ' + companies.length);
 
   if (!companies.length) {
     Logger.log('No mapped companies found — fill in the account_map tab first.');

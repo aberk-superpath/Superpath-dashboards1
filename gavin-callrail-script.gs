@@ -1,5 +1,5 @@
 // ============================================================
-// NATASHA DASHBOARD — CallRail Data Puller
+// GAVIN DASHBOARD — CallRail Data Puller
 // Install as a standalone Google Apps Script
 // (NOT bound to the sheet — standalone script with SHEET_ID)
 //
@@ -15,7 +15,7 @@
 var CR_CONFIG = {
   API_KEY:    'YOUR_CALLRAIL_API_KEY',
   ACCOUNT_ID: 'YOUR_CALLRAIL_ACCOUNT_ID',
-  SHEET_ID:   'YOUR_GOOGLE_SHEET_ID',
+  SHEET_ID:   'PASTE_GAVIN_SHEET_ID_HERE',
   TIMEZONE:   'America/New_York',
   LOOKBACK_DAYS: 30,
   PER_PAGE:   250
@@ -27,6 +27,48 @@ var CR_HEADERS = {
                'form_submissions','avg_call_duration_sec'],
   accountMap: ['callrail_company_name','ads_account_id','notes']
 };
+
+// ─── account_map tab — populate in the Sheet with these rows ──
+// (callrail_company_name must match exactly what CallRail shows)
+//
+// Superpath MCC accounts:
+//   A1 Check Cashing                    | 939-906-9856
+//   Birmingham Mosquito Control         | 846-879-6505
+//   Connell's Pest Control              | 645-214-4301
+//   DMH Electric                        | 936-735-8878
+//   Elder Law of Alabama                | 637-717-3911
+//   Fortress Roofing                    | 908-629-9597
+//   Heavyweight Waste                   | 177-566-3931
+//   Hidden Oak Labradors                | 330-777-8178
+//   Houk Air                            | 668-998-1948
+//   JBathe Electric                     | 962-984-8921
+//   Let It Glow                         | 831-534-5637
+//   Mac Electric                        | 348-959-6662
+//   Paff Electric                       | 655-187-1568
+//   Prantl Heating & Cooling            | 419-569-2711
+//   Rhema Electric                      | 707-844-0497
+//   Rooter MD                           | 573-217-9782
+//   Rooter Hero Plumbing - San Jose     | 939-434-2239
+//   Rooter Hero Plumbing - Santa Barbara| 400-550-7148
+//   Rooter Hero Plumbing - San Diego    | 370-453-9854
+//   Semper Fi                           | 966-140-2141
+//   Southland Goldens                   | 320-278-5014
+//   US Smoke & Fire                     | 528-340-7322
+//   White Glove                         | 264-806-2658
+//   Woodworth Electric                  | 324-478-3262
+//
+// Bell Media MCC accounts:
+//   Arobotech                           | 701-646-5480
+//   Birmingham Airport Authority        | 923-739-9307
+//   Nonconnah Corporate Center          | 116-427-8686
+//   Odyssey Electronics                 | 233-500-2045
+//   Guin Service                        | 395-434-5123
+//   One Lincoln Park                    | 869-354-5249
+//
+//   Smash My Trash                      | 853-232-1784
+//
+// Note: Rooter SJ/SB/SD are shared with Jared Gamer — same accounts, both manage them.
+// Both strategists' scripts can write to the same account IDs without conflict.
 
 // ─── MAIN ENTRY ───────────────────────────────────────────────
 function pullCallRailData() {
@@ -47,7 +89,7 @@ function pullCallRailData() {
   var companies = allCompanies.filter(function(c) {
     return !!mapping[c.name.toLowerCase().trim()];
   });
-  Logger.log('Mapped to Natasha accounts: ' + companies.length);
+  Logger.log('Mapped to Gavin accounts: ' + companies.length);
 
   if (!companies.length) {
     Logger.log('No mapped companies found — fill in the account_map tab first.');
