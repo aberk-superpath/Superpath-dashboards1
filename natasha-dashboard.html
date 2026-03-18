@@ -418,13 +418,14 @@ const SK = {
   accountmap: 'sp_natasha_accountmap_url'
 };
 
+const BASE = 'https://docs.google.com/spreadsheets/d/e/YOUR_PUBLISHED_KEY/pub?output=csv';
 const DEFAULT_URLS = {
-  campaign:   '',
-  keyword:    '',
-  searchterms:'',
-  ads:        '',
-  callrail:   '',
-  accountmap: ''
+  campaign:    BASE + '&gid=514465327',
+  keyword:     BASE + '&gid=1157164164',
+  searchterms: BASE + '&gid=1049923355',
+  ads:         BASE + '&gid=1775008133',
+  callrail:    BASE + '&gid=1919137121',
+  accountmap:  BASE + '&gid=0'
 };
 
 // ─── STATE ────────────────────────────────────────────────────
