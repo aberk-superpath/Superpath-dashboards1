@@ -15,7 +15,7 @@
 var CR_CONFIG = {
   API_KEY:    'YOUR_CALLRAIL_API_KEY',
   ACCOUNT_ID: 'YOUR_CALLRAIL_ACCOUNT_ID',
-  SHEET_ID:   'PASTE_JARED_SHEET_ID_HERE',
+  SHEET_ID:   'YOUR_GOOGLE_SHEET_ID',
   TIMEZONE:   'America/New_York',
   LOOKBACK_DAYS: 30,
   PER_PAGE:   250
@@ -158,6 +158,7 @@ function fetchCallSummary(companyId, startDate, endDate) {
     '&start_date='  + startDate +
     '&end_date='    + endDate +
     '&fields=answered,duration' +
+    '&source_name[]=Google+Ads' +
     '&per_page='    + CR_CONFIG.PER_PAGE;
 
   try {
@@ -190,6 +191,7 @@ function fetchFormCount(companyId, startDate, endDate) {
     '?company_id=' + companyId +
     '&start_date=' + startDate +
     '&end_date='   + endDate +
+    '&source_name[]=Google+Ads' +
     '&per_page='   + CR_CONFIG.PER_PAGE;
 
   try {
