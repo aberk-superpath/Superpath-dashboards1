@@ -164,13 +164,15 @@ function fetchCallSummary(companyId, startDate, endDate) {
     '?company_id='  + companyId +
     '&start_date='  + startDate +
     '&end_date='    + endDate +
-    '&fields=answered,duration' +
+    '&fields=answered,duration,source' +
     '&per_page='    + CR_CONFIG.PER_PAGE;
 
   try {
     var res   = UrlFetchApp.fetch(url, authHeaders());
     var data  = JSON.parse(res.getContentText());
-    var calls = data.calls || [];
+    var calls = (data.calls || []).filter(function(c) {
+      return c.source && c.source.toLowerCase().indexOf('google') !== -1;
+    });
 
     var total       = calls.length;
     var answered    = calls.filter(function(c) { return c.answered; }).length;
@@ -197,12 +199,15 @@ function fetchFormCount(companyId, startDate, endDate) {
     '?company_id=' + companyId +
     '&start_date=' + startDate +
     '&end_date='   + endDate +
+    '&fields=source' +
     '&per_page='   + CR_CONFIG.PER_PAGE;
 
   try {
     var res  = UrlFetchApp.fetch(url, authHeaders());
     var data = JSON.parse(res.getContentText());
-    return (data.form_submissions || []).length;
+    return (data.form_submissions || []).filter(function(f) {
+      return f.source && f.source.toLowerCase().indexOf('google') !== -1;
+    }).length;
   } catch(e) {
     Logger.log('fetchFormCount ERR [' + companyId + ']: ' + e.message);
     return 0;

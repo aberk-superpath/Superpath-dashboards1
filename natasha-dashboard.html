@@ -225,6 +225,21 @@ tbody tr.data-row:hover .expand-btn{color:var(--ion);}
 /* EMPTY STATE */
 .empty-state{padding:48px;text-align:center;color:var(--nuc-30);font-size:13px;}
 
+/* TREND BADGES */
+.trend-badge{display:inline-flex;align-items:center;gap:3px;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700;white-space:nowrap;}
+.trend-up-bg{background:var(--green-12);color:var(--green);border:1px solid var(--green-30);}
+.trend-down-bg{background:var(--coma-12);color:var(--coma);border:1px solid var(--coma-30);}
+.trend-flat-bg{background:var(--nuc-08);color:var(--nuc-45);border:1px solid var(--nuc-20);}
+
+/* TREND TAB */
+.trend-summary{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px;}
+.trend-card{padding:18px 20px;border-radius:10px;border:1px solid var(--border);background:var(--ion-06);}
+.tc-label{font-size:9px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--nuc-60);margin-bottom:8px;}
+.tc-value{font-size:28px;font-weight:800;color:var(--nucleus);line-height:1;margin-bottom:4px;letter-spacing:-0.3px;}
+.tc-sub{font-size:11px;color:var(--nuc-45);}
+.tc-note{font-size:10px;color:var(--nuc-30);margin-top:10px;line-height:1.5;}
+.trend-footnote{margin-top:12px;font-size:10px;color:var(--nuc-30);line-height:1.6;}
+
 /* MOBILE */
 @media(max-width:900px){
   header{padding:16px 20px;}
@@ -268,6 +283,7 @@ tbody tr.data-row:hover .expand-btn{color:var(--ion);}
   <div class="tabs">
     <button class="t-btn active" onclick="switchTab('kpis')">Portfolio KPIs</button>
     <button class="t-btn" onclick="switchTab('camps')">Campaigns</button>
+    <button class="t-btn" onclick="switchTab('trends')">Trends</button>
     <button class="t-btn" onclick="switchTab('opts')">Optimization Queue <span id="opt-badge"></span></button>
     <button class="t-btn" onclick="switchTab('setup')">Data Source</button>
   </div>
@@ -342,7 +358,21 @@ tbody tr.data-row:hover .expand-btn{color:var(--ion);}
   </div>
 
   <!-- ══════════════════════════════════════════
-       TAB 2: OPTIMIZATION QUEUE
+       TAB: TRENDS
+  ══════════════════════════════════════════ -->
+  <div id="tab-trends" class="t-panel">
+    <div class="s-label">Week-over-Week Account Trends</div>
+    <div class="trend-summary" id="trend-summary-cards"></div>
+    <div class="tbl-wrap" id="trends-table-wrap">
+      <div class="empty-state">Loading trend data...</div>
+    </div>
+    <div class="trend-footnote">
+      Campaign trends compare the two most recent 30-day rolling snapshots (requires 7+ days of script history). CallRail trends compare last 7 days vs prior 7 days of daily call data (requires 14+ days).
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════
+       TAB: OPTIMIZATION QUEUE
   ══════════════════════════════════════════ -->
   <div id="tab-opts" class="t-panel">
     <div class="opt-insights" id="opt-insights"></div>
@@ -436,6 +466,8 @@ let CAMP_STATUS   = 'all';
 let CAMP_TYPE     = 'all';
 let OPT_PRIORITY  = 'all';
 let ACCT_SORT_COL = 'cost';
+let ACCT_TRENDS   = {};
+let CR_TRENDS     = {};
 
 // ─── INIT ─────────────────────────────────────────────────────
 window.addEventListener('load', () => {
@@ -524,7 +556,11 @@ function processAll() {
   // Roll up account-level aggregates from campaigns
   buildAccountRollups();
 
-  // Generate opt recommendations
+  // Build trend comparisons (needs full DATA.campaign + DATA.callrail)
+  buildTrends();
+  buildCRTrends();
+
+  // Generate opt recommendations (after trends so trend-based rules work)
   OPTS = generateOpts();
 
   // Populate account dropdowns
@@ -537,6 +573,7 @@ function processAll() {
   renderCampaignTable();
   renderOptTable();
   renderOptInsights();
+  renderTrendsTab();
   renderOptBadge();
   checkP1Alert();
   updateTimestamp();
@@ -601,6 +638,201 @@ function buildCRLookup() {
 
 function getCRData(accountId) {
   return CR_LOOKUP[accountId] || { total_calls: 0, answered_calls: 0, missed_calls: 0, first_time_callers: 0, form_submissions: 0 };
+}
+
+// ─── TREND COMPUTATION ────────────────────────────────────────
+function buildTrends() {
+  ACCT_TRENDS = {};
+  const rows = DATA.campaign || [];
+  if (!rows.length) return;
+  const dates = [...new Set(rows.map(r => r.date).filter(Boolean))].sort().reverse();
+  if (dates.length < 2) return;
+  const currentDate = dates[0];
+  const priorDate   = dates.find(d => {
+    const diff = (new Date(currentDate) - new Date(d)) / 86400000;
+    return diff >= 5 && diff <= 14;
+  });
+  if (!priorDate) return;
+  const rollup = (dateVal) => {
+    const acc = {};
+    rows.filter(r => r.date === dateVal).forEach(r => {
+      if (!acc[r.account_id]) acc[r.account_id] = { cost: 0, conversions: 0, clicks: 0, impressions: 0 };
+      acc[r.account_id].cost        += num(r.cost);
+      acc[r.account_id].conversions += num(r.conversions);
+      acc[r.account_id].clicks      += num(r.clicks);
+      acc[r.account_id].impressions += num(r.impressions);
+    });
+    return acc;
+  };
+  const curr  = rollup(currentDate);
+  const prior = rollup(priorDate);
+  Object.keys(curr).forEach(id => {
+    const c = curr[id];
+    const p = prior[id];
+    if (!p) return;
+    const cpaCurr  = c.conversions > 0 ? c.cost / c.conversions : null;
+    const cpaPrior = p.conversions > 0 ? p.cost / p.conversions : null;
+    ACCT_TRENDS[id] = {
+      convCurr:  c.conversions,
+      convPrior: p.conversions,
+      convDelta: p.conversions > 0 ? (c.conversions - p.conversions) / p.conversions * 100 : null,
+      costCurr:  c.cost,
+      costPrior: p.cost,
+      costDelta: p.cost > 0 ? (c.cost - p.cost) / p.cost * 100 : null,
+      cpaCurr, cpaPrior,
+      cpaDelta: cpaCurr && cpaPrior ? (cpaCurr - cpaPrior) / cpaPrior * 100 : null,
+      priorDate, currentDate
+    };
+  });
+}
+
+function buildCRTrends() {
+  CR_TRENDS = {};
+  const rows = DATA.callrail || [];
+  if (!rows.length) return;
+  const dates = [...new Set(rows.map(r => r.date).filter(Boolean))].sort().reverse();
+  if (dates.length < 8) return;
+  const recent7 = new Set(dates.slice(0, 7));
+  const prior7  = new Set(dates.slice(7, 14));
+  const mapByName = {};
+  (DATA.accountmapLatest || []).forEach(r => {
+    if (r.ads_account_id) mapByName[r.callrail_company_name] = r.ads_account_id;
+  });
+  const recent = {}, prior = {};
+  rows.forEach(r => {
+    const id = r.ads_account_id || mapByName[r.company_name] || '';
+    if (!id) return;
+    if (recent7.has(r.date)) { recent[id] = (recent[id] || 0) + num(r.total_calls); }
+    if (prior7.has(r.date))  { prior[id]  = (prior[id]  || 0) + num(r.total_calls); }
+  });
+  Object.keys(recent).forEach(id => {
+    const r7 = recent[id] || 0;
+    const p7 = prior[id]  || 0;
+    CR_TRENDS[id] = { recent7: r7, prior7: p7, delta: p7 > 0 ? (r7 - p7) / p7 * 100 : null };
+  });
+}
+
+// ─── TREND HELPERS ────────────────────────────────────────────
+function trendBadge(delta, invertGood) {
+  if (delta === null || delta === undefined) return '<span class="trend-flat-bg trend-badge">—</span>';
+  const pct    = Math.round(delta);
+  const sign   = pct > 0 ? '+' : '';
+  const isGood = invertGood ? pct < -4 : pct > 4;
+  const isBad  = invertGood ? pct >  4 : pct < -4;
+  if (isGood) return `<span class="trend-up-bg trend-badge">▲ ${sign}${pct}%</span>`;
+  if (isBad)  return `<span class="trend-down-bg trend-badge">▼ ${sign}${pct}%</span>`;
+  return `<span class="trend-flat-bg trend-badge">≈ ${sign}${pct}%</span>`;
+}
+
+// ─── TRENDS TAB ───────────────────────────────────────────────
+function renderTrendsTab() {
+  const cardEl  = document.getElementById('trend-summary-cards');
+  const tableEl = document.getElementById('trends-table-wrap');
+  if (!cardEl || !tableEl) return;
+
+  const hasTrends = Object.keys(ACCT_TRENDS).length > 0;
+  const hasCR     = Object.keys(CR_TRENDS).length > 0;
+
+  if (!hasTrends) {
+    cardEl.innerHTML  = '';
+    tableEl.innerHTML = '<div class="empty-state">Not enough historical data yet.<br>Trend analysis requires 7+ days of daily script runs. Check back in a few days.</div>';
+    return;
+  }
+
+  // Portfolio aggregates
+  let totalConvCurr = 0, totalConvPrior = 0, totalCostCurr = 0, totalCostPrior = 0;
+  Object.values(ACCT_TRENDS).forEach(t => {
+    totalConvCurr  += t.convCurr;
+    totalConvPrior += t.convPrior;
+    totalCostCurr  += t.costCurr;
+    totalCostPrior += t.costPrior;
+  });
+  const portConvDelta = totalConvPrior > 0 ? (totalConvCurr - totalConvPrior) / totalConvPrior * 100 : null;
+  const portCostDelta = totalCostPrior > 0 ? (totalCostCurr - totalCostPrior) / totalCostPrior * 100 : null;
+  let totalCallsCurr = 0, totalCallsPrior = 0;
+  Object.values(CR_TRENDS).forEach(c => { totalCallsCurr += c.recent7; totalCallsPrior += c.prior7; });
+  const portCallDelta = totalCallsPrior > 0 ? (totalCallsCurr - totalCallsPrior) / totalCallsPrior * 100 : null;
+  const decliningAccts = Object.values(ACCT_TRENDS).filter(t => t.convDelta !== null && t.convDelta < -15).length;
+  const periodLabel    = Object.values(ACCT_TRENDS)[0]?.priorDate || '';
+  const fmtDelta       = d => d === null ? '—' : (d > 0 ? '+' : '') + Math.round(d) + '%';
+
+  const convColor = portConvDelta === null ? 'var(--ion)' : portConvDelta > 4 ? 'var(--green)' : portConvDelta < -4 ? 'var(--coma)' : 'var(--ion)';
+  const costColor = portCostDelta === null ? 'var(--ion)' : portCostDelta < -4 ? 'var(--green)' : portCostDelta > 4 ? 'var(--amber)' : 'var(--ion)';
+  const callColor = portCallDelta === null ? 'var(--ion)' : portCallDelta > 4 ? 'var(--green)' : portCallDelta < -4 ? 'var(--amber)' : 'var(--ion)';
+
+  cardEl.innerHTML = `
+    <div class="trend-card">
+      <div class="tc-label">Portfolio Conversions</div>
+      <div class="tc-value" style="color:${convColor}">${fmtDelta(portConvDelta)}</div>
+      <div class="tc-sub">${fmtNum(totalConvCurr, 1)} conv now vs ${fmtNum(totalConvPrior, 1)} prior</div>
+      <div class="tc-note">vs. snapshot from ${periodLabel}</div>
+    </div>
+    <div class="trend-card">
+      <div class="tc-label">Portfolio Spend</div>
+      <div class="tc-value" style="color:${costColor}">${fmtDelta(portCostDelta)}</div>
+      <div class="tc-sub">$${fmtNum(totalCostCurr, 0)} now vs $${fmtNum(totalCostPrior, 0)} prior</div>
+      <div class="tc-note">vs. snapshot from ${periodLabel}</div>
+    </div>
+    <div class="trend-card">
+      <div class="tc-label">Call Volume (7d)</div>
+      <div class="tc-value" style="color:${callColor}">${hasCR ? fmtDelta(portCallDelta) : '—'}</div>
+      <div class="tc-sub">${hasCR ? totalCallsCurr + ' calls last 7d vs ' + totalCallsPrior + ' prior 7d' : 'Needs 14+ days of data'}</div>
+      <div class="tc-note">Last 7 days vs prior 7 days</div>
+    </div>
+    <div class="trend-card">
+      <div class="tc-label">Accounts Declining</div>
+      <div class="tc-value" style="color:${decliningAccts > 0 ? 'var(--coma)' : 'var(--green)'}">${decliningAccts}</div>
+      <div class="tc-sub">Conv down &gt;15% vs prior period</div>
+      <div class="tc-note">Out of ${Object.keys(ACCT_TRENDS).length} tracked accounts</div>
+    </div>`;
+
+  // Per-account table
+  const accounts = Object.values(ACCT_ROLLUPS).sort((a, b) => b.cost - a.cost);
+  const rows = accounts.map(a => {
+    const t  = ACCT_TRENDS[a.account_id] || null;
+    const cr = CR_TRENDS[a.account_id]   || null;
+    const convBadge = trendBadge(t ? t.convDelta : null, false);
+    const cpaBadge  = trendBadge(t ? t.cpaDelta  : null, true);
+    const callBadge = trendBadge(cr ? cr.delta   : null, false);
+    let signal = 'stable';
+    if (t) {
+      const dec = (t.convDelta !== null && t.convDelta < -15) || (t.cpaDelta !== null && t.cpaDelta > 30);
+      const imp = (t.convDelta !== null && t.convDelta >  15) || (t.cpaDelta !== null && t.cpaDelta < -20);
+      if (dec) signal = 'declining';
+      else if (imp) signal = 'improving';
+    }
+    const signalBadge = signal === 'improving' ? '<span class="trend-up-bg trend-badge">▲ Improving</span>' :
+                        signal === 'declining'  ? '<span class="trend-down-bg trend-badge">▼ Declining</span>' :
+                        '<span class="trend-flat-bg trend-badge">≈ Stable</span>';
+    const convStr = t ? `${fmtNum(t.convPrior, 1)} → ${fmtNum(t.convCurr, 1)}` : '—';
+    const cpaStr  = t && (t.cpaPrior || t.cpaCurr) ? `$${fmtNum(t.cpaPrior || 0, 0)} → $${fmtNum(t.cpaCurr || 0, 0)}` : '—';
+    const callStr = cr ? `${cr.prior7} → ${cr.recent7}` : '—';
+    return `<tr>
+      <td class="td-name">${esc(a.account_name)}</td>
+      <td class="td-num">${convStr}</td>
+      <td class="td-right">${convBadge}</td>
+      <td class="td-num">${cpaStr}</td>
+      <td class="td-right">${cpaBadge}</td>
+      <td class="td-num">${callStr}</td>
+      <td class="td-right">${callBadge}</td>
+      <td class="td-right">${signalBadge}</td>
+    </tr>`;
+  }).join('');
+
+  tableEl.innerHTML = `
+    <table>
+      <thead><tr>
+        <th>Account</th>
+        <th class="td-right">Conv (prior → now)</th>
+        <th class="td-right">Conv Δ</th>
+        <th class="td-right">CPA (prior → now)</th>
+        <th class="td-right">CPA Δ</th>
+        <th class="td-right">Calls (7d prior → now)</th>
+        <th class="td-right">Call Δ</th>
+        <th class="td-right">Signal</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
 }
 
 // ─── KPI STRIP ────────────────────────────────────────────────
@@ -983,6 +1215,47 @@ function generateOpts() {
     }
   });
 
+  // ── TREND: CONVERSION DECLINE ─────────────────────────────
+  Object.values(ACCT_ROLLUPS).forEach(a => {
+    const t = ACCT_TRENDS[a.account_id];
+    if (!t || t.convDelta === null) return;
+    if (t.convDelta < -25 && a.cost > 200 && a.conversions > 0) {
+      opts.push({
+        priority: 'P2', account_id: a.account_id, account_name: a.account_name,
+        category: 'Conversion',
+        issue: `Conversions declined ${Math.abs(Math.round(t.convDelta))}% vs prior 30-day window (${fmtNum(t.convPrior, 1)} → ${fmtNum(t.convCurr, 1)})`,
+        recommendation: 'Review recent account changes: bid strategy updates, budget changes, keyword pauses, landing page edits. Check auction insights for competitive shifts.',
+        impact: `${Math.abs(Math.round(t.convDelta))}% conversion decline — prioritize review`
+      });
+    } else if (t.convDelta < -10 && a.cost > 100 && a.conversions > 0) {
+      opts.push({
+        priority: 'P3', account_id: a.account_id, account_name: a.account_name,
+        category: 'Conversion',
+        issue: `Conversions softened ${Math.abs(Math.round(t.convDelta))}% vs prior 30-day window (${fmtNum(t.convPrior, 1)} → ${fmtNum(t.convCurr, 1)})`,
+        recommendation: 'Monitor for continued decline — review auction insights and recent account changes',
+        impact: 'Mild downward trend — worth monitoring'
+      });
+    }
+  });
+
+  // ── TREND: CPA WORSENING ──────────────────────────────────
+  Object.values(ACCT_ROLLUPS).forEach(a => {
+    const t = ACCT_TRENDS[a.account_id];
+    if (!t || t.cpaDelta === null) return;
+    if (t.cpaDelta > 35 && a.conversions >= 3 && a.cost > 200) {
+      const alreadyFlagged = opts.some(o => o.account_id === a.account_id && o.category === 'Conversion' && o.priority === 'P2' && o.issue.includes('declined'));
+      if (!alreadyFlagged) {
+        opts.push({
+          priority: 'P2', account_id: a.account_id, account_name: a.account_name,
+          category: 'Conversion',
+          issue: `CPA worsened ${Math.round(t.cpaDelta)}% vs prior 30-day window ($${fmtNum(t.cpaPrior || 0, 0)} → $${fmtNum(t.cpaCurr || 0, 0)})`,
+          recommendation: 'Review bid strategy, recent auction competition changes, and landing page performance. Consider adjusting target CPA if bidding is overaggressive.',
+          impact: 'Rising cost per lead — investigate before end of month'
+        });
+      }
+    }
+  });
+
   return opts;
 }
 
@@ -1265,7 +1538,7 @@ function updateTimestamp() {
 
 function switchTab(name) {
   document.querySelectorAll('.t-btn').forEach((b, i) => {
-    const tabs = ['kpis','camps','opts','setup'];
+    const tabs = ['kpis','camps','trends','opts','setup'];
     b.classList.toggle('active', tabs[i] === name);
   });
   document.querySelectorAll('.t-panel').forEach(p => p.classList.remove('active'));
