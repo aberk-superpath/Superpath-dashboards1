@@ -1749,6 +1749,7 @@ function connectKWSheet() {
 function parseKWFromCSV(text) {
   const lines = text.trim().split('\n');
   if (lines.length < 2) return [];
+  const parsedLines = lines.map(l => parseCSVLine(l));
 
   // Find header row - first row containing both "keyword" and "match type"
   let headerIdx = -1;
@@ -1773,8 +1774,7 @@ function parseKWFromCSV(text) {
       return 'Broad match';
     };
     const results = [];
-    for (const line of lines) {
-      const cols = line.split(',').map(c => c.replace(/^"|"$/g,'').trim());
+    for (const cols of parsedLines) {
       if (!isDateRow(cols)) continue;
       const im = pn(cols[10]);
       if (im === 0) continue;
@@ -1800,7 +1800,7 @@ function parseKWFromCSV(text) {
   }
 
   // ── NAMED-HEADER PATH (original) ───────────────────────────────────────────
-  const raw = lines[headerIdx].split(',').map(h => h.replace(/^"|"$/g,'').trim().toLowerCase());
+  const raw = parsedLines[headerIdx].map(h => h.toLowerCase());
 
   const fi = (names) => {
     for (const n of names) {
@@ -1831,7 +1831,7 @@ function parseKWFromCSV(text) {
 
   const results = [];
   for (let i = headerIdx + 1; i < lines.length; i++) {
-    const cols = lines[i].split(',').map(c => c.replace(/^"|"$/g,'').trim());
+    const cols = parsedLines[i];
     if (!cols[0] || cols[0].toLowerCase().startsWith('keyword')) continue;
     const kw = H.kw >= 0 ? ps(cols[H.kw]) : cols[0];
     if (!kw) continue;
