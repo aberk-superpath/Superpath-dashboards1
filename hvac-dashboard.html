@@ -66,7 +66,7 @@ main{position:relative;z-index:1;padding:32px 44px 52px;max-width:1640px;margin:
 .s-label::after{content:'';flex:1;height:1px;background:var(--border);}
 
 /* KPI STRIP */
-.kpi-strip{display:grid;grid-template-columns:repeat(9,1fr);gap:10px;margin-bottom:28px;}
+.kpi-strip{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px;margin-bottom:28px;}
 .kpi{position:relative;padding:15px 14px;background:var(--ion-06);border:1px solid var(--border);border-radius:10px;overflow:hidden;transition:border-color .2s,background .2s;cursor:default;}
 .kpi:hover{background:var(--ion-12);border-color:var(--ion-30);}
 .kpi::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:var(--kc,var(--ion));}
@@ -343,6 +343,9 @@ tbody tr{cursor:pointer;}
         <th onclick="sortBy('costPerConv')">Cost / G. Conv.</th>
         <th onclick="sortBy('convRate')">Conv. Rate</th>
         <th onclick="sortBy('sis')">Search Impr. Share</th>
+        <th onclick="sortBy('qualLeads')" title="ION qualified leads — account level">Qual. Leads</th>
+        <th onclick="sortBy('qlPct')" title="Qualified lead rate (QL / total leads)">QL%</th>
+        <th onclick="sortBy('cpql')" title="Cost per qualified lead (Ads spend ÷ QL)">CPQL</th>
       </tr></thead>
       <tbody id="tableBody"></tbody>
     </table></div>
@@ -1330,6 +1333,7 @@ function storageRemove(key) { try { localStorage.removeItem(key); } catch(e) {} 
 const COL_MAP = {
   client:      ['campaign','campaign name','client'],
   account:     ['account','account name','client name'],
+  accountId:   ['customer id','customer id (cid)','cid','account id'],
   status:      ['campaign status','status','campaign state','state'],
   cost:        ['cost','spend','total cost','cost (usd)','cost (aud)','cost (cad)','cost (gbp)'],
   clicks:      ['clicks','total clicks'],
@@ -1369,19 +1373,70 @@ function parseCSVLine(line) {
 }
 
 function parseCSV(text) {
-  // Google Ads exports have metadata rows at the top before the real header row.
-  // Scan to find the row containing known column names, use that as headers.
   const lines = text.trim().split('\n').map(l => parseCSVLine(l));
   if (lines.length < 2) return null;
 
-  // Find the header row: first row that contains "clicks" or "campaign" or "cost"
-  const knownHeaders = ['clicks','campaign','cost','impr.','impressions','ctr','conversions'];
-  let headerIdx = 0;
+  // Find the header row: first row where at least 2 known column names are present
+  const knownHeaders = ['clicks','campaign','cost','impr.','impressions','ctr','conversions','account'];
+  let headerIdx = -1;
   for (let i = 0; i < Math.min(lines.length, 20); i++) {
     const lower = lines[i].map(c => c.toLowerCase().trim());
-    if (knownHeaders.some(h => lower.includes(h))) { headerIdx = i; break; }
+    if (knownHeaders.filter(h => lower.includes(h)).length >= 2) { headerIdx = i; break; }
   }
 
+  // ── POSITIONAL FALLBACK ────────────────────────────────────────────────────
+  // Triggered when the sheet has a title row (e.g. "Timestamp,,,,,,,,") with no
+  // real column headers — happens when merged script reuses existing sheets.
+  // Column layout matches HEADERS.campaign in hvac-ads-script.js:
+  //   0=Timestamp  1=Account  2=CustomerID  3=Campaign  4=Status  5=CampaignType
+  //   6=Cost  7=Clicks  8=Impressions  9=CTR  10=Avg.CPC  11=Conversions
+  //   12=Conv.Rate  13=Cost/Conv.  14=SearchImpr.Share  15=ISLostBudget  16=ISLostRank
+  if (headerIdx < 0) {
+    const isDateRow = r => r.length > 6 && /^\d{4}-\d{2}-\d{2}/.test((r[0]||'').trim());
+    const dataRows = lines.filter(isDateRow);
+    if (dataRows.length === 0) return null;
+    const fmtStatus = s => s === 'ENABLED' ? 'Enabled' : s === 'PAUSED' ? 'Paused' : (s || 'Unknown');
+    const detectType = cn => {
+      if (cn.includes('performance max') || cn.includes('pmax') || cn.includes('search max')) return 'PMax';
+      if (cn.includes('demand gen') || cn.includes('demandgen')) return 'Demand Gen';
+      if (cn.includes('display') || cn.includes('remarketing') || cn.includes('retargeting')) return 'Display';
+      if (cn.includes('brand') || cn.includes('branded')) return 'Brand';
+      if (cn.includes('youtube') || cn.includes('video')) return 'Video';
+      if (cn.includes('lsa') || cn.includes('local service')) return 'LSA';
+      return 'Search';
+    };
+    return dataRows.map(r => {
+      const pn = v => { if (!v || v==='--' || v==='—') return null; return parseFloat(String(v).replace(/[%,$\s]/g,'')) || null; };
+      const cost = pn(r[6]) || 0;
+      const clicks = pn(r[7]) || 0;
+      const impressions = pn(r[8]) || 0;
+      const ctrRaw = pn(r[9]);
+      const cpcRaw = pn(r[10]);
+      const conversions = pn(r[11]) || 0;
+      const convRateRaw = pn(r[12]);
+      const costPerConvRaw = pn(r[13]);
+      const sisRaw = pn(r[14]);
+      const ctr = ctrRaw != null ? ctrRaw : (impressions > 0 ? clicks/impressions*100 : 0);
+      const cpc = cpcRaw != null ? cpcRaw : (clicks > 0 ? cost/clicks : 0);
+      const convRate = convRateRaw != null ? convRateRaw : (clicks > 0 ? conversions/clicks*100 : 0);
+      const costPerConv = costPerConvRaw != null ? costPerConvRaw : (conversions > 0 ? cost/conversions : null);
+      const rawClient = (r[3] || 'Unknown').trim();
+      const client = rawClient.replace(/^(Enabled|Paused|Removed)\s*[-|]\s*/i, '').trim();
+      return {
+        client,
+        account: (r[1] || '').trim() || client,
+        accountId: (r[2] || '').trim(),
+        campaignType: detectType(rawClient.toLowerCase()),
+        status: fmtStatus(r[4]),
+        cost, clicks, impressions, ctr, cpc, conversions, convRate,
+        costPerConv: costPerConv || 0,
+        sis: sisRaw,
+        qualLeads: null, calls: 0, forms: 0, flag: null,
+      };
+    }).filter(r => r.cost > 0);
+  }
+
+  // ── NAMED-HEADER PATH (original) ───────────────────────────────────────────
   const headers = lines[headerIdx].map(h => h.toLowerCase().trim());
   const rows = lines.slice(headerIdx + 1).filter(r =>
     r.length > 1 && r[0] &&
@@ -1392,7 +1447,6 @@ function parseCSV(text) {
 
   const idx = {};
   for (const field of Object.keys(COL_MAP)) idx[field] = findCol(headers, field);
-  // If no dedicated account col, fall back to client col
   if (idx['account'] < 0) idx['account'] = idx['client'];
 
   return rows.map(r => {
@@ -1415,13 +1469,9 @@ function parseCSV(text) {
     const convRate = convRateRaw != null ? convRateRaw : (clicks > 0 ? (conversions/clicks*100) : 0);
     const costPerConv = costPerConvRaw != null ? costPerConvRaw : (conversions > 0 ? cost/conversions : null);
 
-    // Use Campaign name as client label, stripping common prefixes
     const rawClient = get('client') || 'Unknown';
-    const client = rawClient
-      .replace(/^(Enabled|Paused|Removed)\s*[-|]\s*/i, '')
-      .trim();
+    const client = rawClient.replace(/^(Enabled|Paused|Removed)\s*[-|]\s*/i, '').trim();
 
-    // Detect campaign type from campaign name
     const cn = rawClient.toLowerCase();
     let campaignType = 'Search';
     if (cn.includes('performance max') || cn.includes('pmax') || cn.includes('search max')) campaignType = 'PMax';
@@ -1431,7 +1481,6 @@ function parseCSV(text) {
     else if (cn.includes('youtube') || cn.includes('video')) campaignType = 'Video';
     else if (cn.includes('lsa') || cn.includes('local service')) campaignType = 'LSA';
 
-    // Account name: dedicated Account col if available, else parse from campaign name
     const rawAccount = (idx['account'] >= 0 && idx['account'] !== idx['client'])
       ? (r[idx['account']] || '').trim()
       : '';
@@ -1440,6 +1489,7 @@ function parseCSV(text) {
     return {
       client,
       account,
+      accountId: (get('accountId') || '').trim(),
       campaignType,
       status: get('status') || 'Unknown',
       cost, clicks, impressions, ctr, cpc, conversions, convRate,
@@ -1479,6 +1529,11 @@ function loadSheetData(sheetUrl, callback) {
     })
     .then(text => {
       if (!text || text.trim().length < 10) throw new Error('Sheet returned empty data');
+      // Inject column headers if the sheet has none (Ads Add-on protects row 1)
+      const previewLines = text.split('\n').slice(0, 5).join('\n').toLowerCase();
+      if (!previewLines.includes('cost') && !previewLines.includes('clicks')) {
+        text = 'Timestamp,Account,Customer ID,Campaign,Status,Campaign Type,Cost,Clicks,Impressions,CTR,Avg. CPC,Conversions,Conv. Rate,Cost / Conv.,Search Impr. Share,IS Lost (Budget),IS Lost (Rank)\n' + text;
+      }
       const parsed = parseCSV(text);
       if (!parsed || parsed.length === 0) throw new Error('No data rows found — check the sheet has the correct columns');
       callback(parsed, null);
@@ -1578,6 +1633,26 @@ function loadLiveData(data, url) {
     d.costPerLead = null;
   });
 
+  // Pre-aggregate spend per account to compute CPQL
+  const _acctSpend = {};
+  data.forEach(d => { _acctSpend[d.accountId] = (_acctSpend[d.accountId] || 0) + d.cost; });
+
+  // Join ION qualified lead data by account ID
+  data.forEach(d => {
+    const ion = d.accountId ? ION_DATA[d.accountId] : null;
+    if (ion) {
+      d.qualLeads = ion.qualLeads;
+      d.ionLeads  = ion.totalLeads;
+      d.qlPct     = ion.qlPct;
+      d.cpql      = ion.qualLeads > 0 ? _acctSpend[d.accountId] / ion.qualLeads : null;
+    } else {
+      d.qualLeads = null;
+      d.ionLeads  = null;
+      d.qlPct     = null;
+      d.cpql      = null;
+    }
+  });
+
   // Replace ALL data
   ALL.length = 0;
   data.forEach(d => ALL.push(d));
@@ -1625,6 +1700,23 @@ function disconnectSheet() {
 // Auto-connect on load — URLs are baked in as source of truth
 const BAKED_URL    = 'https://docs.google.com/spreadsheets/d/e/YOUR_PUBLISHED_KEY/pub?gid=4504668&single=true&output=csv';
 const KW_BAKED_URL = 'https://docs.google.com/spreadsheets/d/e/YOUR_PUBLISHED_KEY/pub?gid=1374123717&single=true&output=csv';
+const ION_BAKED_URL= 'https://docs.google.com/spreadsheets/d/e/YOUR_PUBLISHED_KEY/pub?gid=14768270&single=true&output=csv';
+
+// ION qualified lead data — keyed by Google Ads account ID
+// Updated: 2026-04-09 | 30-day window | Source: ION MCP GetPerformance
+// Refreshed automatically when ION tab CSV loads; this is the fallback
+let ION_DATA = {
+  '847-523-2035': { totalLeads:117, qualLeads:0,   qlPct:0    }, // C&M Heating and Cooling
+  '315-013-7507': { totalLeads:126, qualLeads:0,   qlPct:0    }, // Capital Comfort
+  '304-837-6770': { totalLeads:99,  qualLeads:0,   qlPct:0    }, // Clover Heating & Cooling
+  '190-396-1000': { totalLeads:0,   qualLeads:0,   qlPct:0    }, // Comfort Design
+  '719-855-6458': { totalLeads:26,  qualLeads:0,   qlPct:0    }, // Engineered Heating and Air
+  '668-998-1948': { totalLeads:1813,qualLeads:960, qlPct:52.9 }, // Houk Air Conditioning
+  '843-653-7592': { totalLeads:12,  qualLeads:0,   qlPct:0    }, // Pilot Mechanical
+  '419-569-2711': { totalLeads:14,  qualLeads:0,   qlPct:0    }, // Prantl Heating & Cooling
+  '564-077-0366': { totalLeads:24,  qualLeads:0,   qlPct:0    }, // Pure Ducts
+  '966-140-2141': { totalLeads:16,  qualLeads:6,   qlPct:37.5 }, // Semper Fi
+};
 
 const KW_SHEET_KEY = 'sp_kw_sheet_url';
 let KW_SHEET_URL = KW_BAKED_URL;
@@ -1655,18 +1747,59 @@ function connectKWSheet() {
 }
 
 function parseKWFromCSV(text) {
-  // Scan past metadata rows to find the real header row
-  // Script writes: row1=title, row2=timestamp, row3=daterange, row4=blank, row5=headers
   const lines = text.trim().split('\n');
   if (lines.length < 2) return [];
 
-  // Find header row - first row containing "keyword"
-  let headerIdx = 0;
+  // Find header row - first row containing both "keyword" and "match type"
+  let headerIdx = -1;
   for (let i = 0; i < Math.min(lines.length, 10); i++) {
     const lower = lines[i].toLowerCase();
     if (lower.includes('keyword') && lower.includes('match type')) { headerIdx = i; break; }
   }
 
+  // ── POSITIONAL FALLBACK ────────────────────────────────────────────────────
+  // Column layout matches HEADERS.keyword in hvac-ads-script.js:
+  //   0=Timestamp  1=Account  2=CustomerID  3=Keyword  4=MatchType  5=AdGroup
+  //   6=Campaign  7=CampaignStatus  8=Cost  9=Clicks  10=Impressions  11=CTR
+  //   12=Avg.CPC  13=Conversions  14=Conv.Rate  15=Cost/Conv.  16=QualityScore
+  if (headerIdx < 0) {
+    const isDateRow = r => r.length > 10 && /^\d{4}-\d{2}-\d{2}/.test((r[0]||'').trim());
+    const pn = v => { if (!v || v==='--') return 0; return parseFloat(String(v).replace(/[%,$"\s]/g,''))||0; };
+    const ps = v => String(v||'').replace(/^"|"$/g,'').trim();
+    const fmtMatch = m => {
+      const u = (m||'').toUpperCase();
+      if (u==='EXACT') return 'Exact match';
+      if (u==='PHRASE') return 'Phrase match';
+      return 'Broad match';
+    };
+    const results = [];
+    for (const line of lines) {
+      const cols = line.split(',').map(c => c.replace(/^"|"$/g,'').trim());
+      if (!isDateRow(cols)) continue;
+      const im = pn(cols[10]);
+      if (im === 0) continue;
+      const kw = ps(cols[3]);
+      if (!kw) continue;
+      results.push({
+        kw,
+        mt:  fmtMatch(cols[4]),
+        ac:  ps(cols[1]),
+        ag:  ps(cols[5]),
+        cl:  pn(cols[9]),
+        im,
+        ct:  pn(cols[11]),
+        cpc: pn(cols[12]),
+        cs:  pn(cols[8]),
+        cv:  pn(cols[13]),
+        cr:  pn(cols[14]),
+        cc:  pn(cols[15]),
+        qs:  pn(cols[16]),
+      });
+    }
+    return results;
+  }
+
+  // ── NAMED-HEADER PATH (original) ───────────────────────────────────────────
   const raw = lines[headerIdx].split(',').map(h => h.replace(/^"|"$/g,'').trim().toLowerCase());
 
   const fi = (names) => {

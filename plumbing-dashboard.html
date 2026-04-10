@@ -1360,19 +1360,70 @@ function parseCSVLine(line) {
 }
 
 function parseCSV(text) {
-  // Google Ads exports have metadata rows at the top before the real header row.
-  // Scan to find the row containing known column names, use that as headers.
   const lines = text.trim().split('\n').map(l => parseCSVLine(l));
   if (lines.length < 2) return null;
 
-  // Find the header row: first row that contains "clicks" or "campaign" or "cost"
-  const knownHeaders = ['clicks','campaign','cost','impr.','impressions','ctr','conversions'];
-  let headerIdx = 0;
+  // Find the header row: first row where at least 2 known column names are present
+  const knownHeaders = ['clicks','campaign','cost','impr.','impressions','ctr','conversions','account'];
+  let headerIdx = -1;
   for (let i = 0; i < Math.min(lines.length, 20); i++) {
     const lower = lines[i].map(c => c.toLowerCase().trim());
-    if (knownHeaders.some(h => lower.includes(h))) { headerIdx = i; break; }
+    if (knownHeaders.filter(h => lower.includes(h)).length >= 2) { headerIdx = i; break; }
   }
 
+  // ── POSITIONAL FALLBACK ────────────────────────────────────────────────────
+  // Triggered when the sheet has a title row (e.g. "Timestamp,,,,,,,,") with no
+  // real column headers — happens when merged script reuses existing sheets.
+  // Column layout matches HEADERS.campaign in plumbing-ads-script.js:
+  //   0=Timestamp  1=Account  2=CustomerID  3=Campaign  4=Status  5=CampaignType
+  //   6=Cost  7=Clicks  8=Impressions  9=CTR  10=Avg.CPC  11=Conversions
+  //   12=Conv.Rate  13=Cost/Conv.  14=SearchImpr.Share  15=ISLostBudget  16=ISLostRank
+  if (headerIdx < 0) {
+    const isDateRow = r => r.length > 6 && /^\d{4}-\d{2}-\d{2}/.test((r[0]||'').trim());
+    const dataRows = lines.filter(isDateRow);
+    if (dataRows.length === 0) return null;
+    const fmtStatus = s => s === 'ENABLED' ? 'Enabled' : s === 'PAUSED' ? 'Paused' : (s || 'Unknown');
+    const detectType = cn => {
+      if (cn.includes('performance max') || cn.includes('pmax') || cn.includes('search max')) return 'PMax';
+      if (cn.includes('demand gen') || cn.includes('demandgen')) return 'Demand Gen';
+      if (cn.includes('display') || cn.includes('remarketing') || cn.includes('retargeting')) return 'Display';
+      if (cn.includes('brand') || cn.includes('branded')) return 'Brand';
+      if (cn.includes('youtube') || cn.includes('video')) return 'Video';
+      if (cn.includes('lsa') || cn.includes('local service')) return 'LSA';
+      return 'Search';
+    };
+    return dataRows.map(r => {
+      const pn = v => { if (!v || v==='--' || v==='—') return null; return parseFloat(String(v).replace(/[%,$\s]/g,'')) || null; };
+      const cost = pn(r[6]) || 0;
+      const clicks = pn(r[7]) || 0;
+      const impressions = pn(r[8]) || 0;
+      const ctrRaw = pn(r[9]);
+      const cpcRaw = pn(r[10]);
+      const conversions = pn(r[11]) || 0;
+      const convRateRaw = pn(r[12]);
+      const costPerConvRaw = pn(r[13]);
+      const sisRaw = pn(r[14]);
+      const ctr = ctrRaw != null ? ctrRaw : (impressions > 0 ? clicks/impressions*100 : 0);
+      const cpc = cpcRaw != null ? cpcRaw : (clicks > 0 ? cost/clicks : 0);
+      const convRate = convRateRaw != null ? convRateRaw : (clicks > 0 ? conversions/clicks*100 : 0);
+      const costPerConv = costPerConvRaw != null ? costPerConvRaw : (conversions > 0 ? cost/conversions : null);
+      const rawClient = (r[3] || 'Unknown').trim();
+      const client = rawClient.replace(/^(Enabled|Paused|Removed)\s*[-|]\s*/i, '').trim();
+      return {
+        client,
+        account: (r[1] || '').trim() || client,
+        accountId: (r[2] || '').trim(),
+        campaignType: detectType(rawClient.toLowerCase()),
+        status: fmtStatus(r[4]),
+        cost, clicks, impressions, ctr, cpc, conversions, convRate,
+        costPerConv: costPerConv || 0,
+        sis: sisRaw,
+        qualLeads: null, calls: 0, forms: 0, flag: null,
+      };
+    }).filter(r => r.cost > 0);
+  }
+
+  // ── NAMED-HEADER PATH (original) ───────────────────────────────────────────
   const headers = lines[headerIdx].map(h => h.toLowerCase().trim());
   const rows = lines.slice(headerIdx + 1).filter(r =>
     r.length > 1 && r[0] &&
@@ -1383,7 +1434,6 @@ function parseCSV(text) {
 
   const idx = {};
   for (const field of Object.keys(COL_MAP)) idx[field] = findCol(headers, field);
-  // If no dedicated account col, fall back to client col
   if (idx['account'] < 0) idx['account'] = idx['client'];
 
   return rows.map(r => {
@@ -1406,13 +1456,9 @@ function parseCSV(text) {
     const convRate = convRateRaw != null ? convRateRaw : (clicks > 0 ? (conversions/clicks*100) : 0);
     const costPerConv = costPerConvRaw != null ? costPerConvRaw : (conversions > 0 ? cost/conversions : null);
 
-    // Use Campaign name as client label, stripping common prefixes
     const rawClient = get('client') || 'Unknown';
-    const client = rawClient
-      .replace(/^(Enabled|Paused|Removed)\s*[-|]\s*/i, '')
-      .trim();
+    const client = rawClient.replace(/^(Enabled|Paused|Removed)\s*[-|]\s*/i, '').trim();
 
-    // Detect campaign type from campaign name
     const cn = rawClient.toLowerCase();
     let campaignType = 'Search';
     if (cn.includes('performance max') || cn.includes('pmax') || cn.includes('search max')) campaignType = 'PMax';
@@ -1422,7 +1468,6 @@ function parseCSV(text) {
     else if (cn.includes('youtube') || cn.includes('video')) campaignType = 'Video';
     else if (cn.includes('lsa') || cn.includes('local service')) campaignType = 'LSA';
 
-    // Account name: dedicated Account col if available, else parse from campaign name
     const rawAccount = (idx['account'] >= 0 && idx['account'] !== idx['client'])
       ? (r[idx['account']] || '').trim()
       : '';
@@ -1431,6 +1476,7 @@ function parseCSV(text) {
     return {
       client,
       account,
+      accountId: (get('accountId') || '').trim(),
       campaignType,
       status: get('status') || 'Unknown',
       cost, clicks, impressions, ctr, cpc, conversions, convRate,
@@ -1647,18 +1693,59 @@ function connectKWSheet() {
 }
 
 function parseKWFromCSV(text) {
-  // Scan past metadata rows to find the real header row
-  // Script writes: row1=title, row2=timestamp, row3=daterange, row4=blank, row5=headers
   const lines = text.trim().split('\n');
   if (lines.length < 2) return [];
 
-  // Find header row - first row containing "keyword"
-  let headerIdx = 0;
+  // Find header row - first row containing both "keyword" and "match type"
+  let headerIdx = -1;
   for (let i = 0; i < Math.min(lines.length, 10); i++) {
     const lower = lines[i].toLowerCase();
     if (lower.includes('keyword') && lower.includes('match type')) { headerIdx = i; break; }
   }
 
+  // ── POSITIONAL FALLBACK ────────────────────────────────────────────────────
+  // Column layout matches HEADERS.keyword in plumbing-ads-script.js:
+  //   0=Timestamp  1=Account  2=CustomerID  3=Keyword  4=MatchType  5=AdGroup
+  //   6=Campaign  7=CampaignStatus  8=Cost  9=Clicks  10=Impressions  11=CTR
+  //   12=Avg.CPC  13=Conversions  14=Conv.Rate  15=Cost/Conv.  16=QualityScore
+  if (headerIdx < 0) {
+    const isDateRow = r => r.length > 10 && /^\d{4}-\d{2}-\d{2}/.test((r[0]||'').trim());
+    const pn = v => { if (!v || v==='--') return 0; return parseFloat(String(v).replace(/[%,$"\s]/g,''))||0; };
+    const ps = v => String(v||'').replace(/^"|"$/g,'').trim();
+    const fmtMatch = m => {
+      const u = (m||'').toUpperCase();
+      if (u==='EXACT') return 'Exact match';
+      if (u==='PHRASE') return 'Phrase match';
+      return 'Broad match';
+    };
+    const results = [];
+    for (const line of lines) {
+      const cols = line.split(',').map(c => c.replace(/^"|"$/g,'').trim());
+      if (!isDateRow(cols)) continue;
+      const im = pn(cols[10]);
+      if (im === 0) continue;
+      const kw = ps(cols[3]);
+      if (!kw) continue;
+      results.push({
+        kw,
+        mt:  fmtMatch(cols[4]),
+        ac:  ps(cols[1]),
+        ag:  ps(cols[5]),
+        cl:  pn(cols[9]),
+        im,
+        ct:  pn(cols[11]),
+        cpc: pn(cols[12]),
+        cs:  pn(cols[8]),
+        cv:  pn(cols[13]),
+        cr:  pn(cols[14]),
+        cc:  pn(cols[15]),
+        qs:  pn(cols[16]),
+      });
+    }
+    return results;
+  }
+
+  // ── NAMED-HEADER PATH (original) ───────────────────────────────────────────
   const raw = lines[headerIdx].split(',').map(h => h.replace(/^"|"$/g,'').trim().toLowerCase());
 
   const fi = (names) => {
