@@ -1034,6 +1034,16 @@ function renderCampaignTable() {
 }
 
 // ─── OPT GENERATION ───────────────────────────────────────────
+function getVerticalCpaThreshold(name) {
+  const n = (name || '').toLowerCase();
+  if (/restoration|water damage|fire damage|mold remediation|flood/.test(n)) return 700;
+  if (/roof/.test(n)) return 300;
+  if (/hvac|heating|cooling|furnace|air condition|heat pump/.test(n)) return 200;
+  if (/plumb|drain|sewer/.test(n)) return 200;
+  if (/electric/.test(n)) return 200;
+  return 350;
+}
+
 function generateOpts() {
   const opts = [];
   const camps      = DATA.campaignLatest    || [];
@@ -1075,12 +1085,13 @@ function generateOpts() {
     const cost = num(r.cost);
     const conv = num(r.conversions);
     const cpa  = conv > 0 ? cost / conv : 0;
-    if (cpa > 350 && conv > 0 && cost > 200 && r.campaign_status === 'ENABLED') {
+    const cpaThreshold = getVerticalCpaThreshold(r.account_name + ' ' + r.campaign_name);
+    if (cpa > cpaThreshold && conv > 0 && cost > 200 && r.campaign_status === 'ENABLED') {
       opts.push({
         priority: 'P1', account_id: r.account_id, account_name: r.account_name,
         category: 'Conversion',
         issue: `"${r.campaign_name}" — CPA $${fmtNum(cpa, 0)} on ${fmtNum(conv, 1)} conv ($${fmtNum(cost, 0)} spend)`,
-        recommendation: 'Review bidding strategy, landing page quality, and keyword intent — CPA exceeds $350 threshold. Consider pausing or restructuring campaign.',
+        recommendation: `Review bidding strategy and keyword intent — CPA exceeds $${fmtNum(cpaThreshold, 0)} vertical threshold. Consider adjusting target CPA or restructuring campaign.`,
         impact: `$${fmtNum(cpa, 0)} CPA — likely above client target`
       });
     }
@@ -1094,7 +1105,7 @@ function generateOpts() {
         priority: 'P1', account_id: r.account_id, account_name: r.account_name,
         category: 'Conversion',
         issue: `"${r.campaign_name}" — $${fmtNum(num(r.cost), 0)} spend, 0 conversions in 30 days`,
-        recommendation: 'Pause and audit: check conversion tracking, landing page experience, keyword intent, and ad relevance before resuming spend',
+        recommendation: 'Audit conversion tracking, keyword intent, and ad relevance. Escalate to web team if landing page quality may be a factor.',
         impact: `$${fmtNum(num(r.cost), 0)} at risk with no measurable return`
       });
     }
@@ -1123,7 +1134,7 @@ function generateOpts() {
         priority: 'P2', account_id: r.account_id, account_name: r.account_name,
         category: 'Conversion',
         issue: `"${r.campaign_name}" — $${fmtNum(num(r.cost), 0)} spend, 0 conversions (30 days)`,
-        recommendation: 'Check conversion tracking, landing page quality, and keyword-to-ad-to-page relevance',
+        recommendation: 'Check conversion tracking and keyword-to-ad relevance. Escalate to web team if landing page quality may be a factor.',
         impact: `$${fmtNum(num(r.cost), 0)} at risk`
       });
     }
@@ -1139,7 +1150,7 @@ function generateOpts() {
         priority: 'P2', account_id: r.account_id, account_name: r.account_name,
         category: 'Quality Score',
         issue: `Keyword "${r.keyword_text}" [${r.match_type}] — QS ${qs}, $${fmtNum(cost, 0)} spend`,
-        recommendation: 'Improve ad-to-keyword relevance and landing page experience, or pause if non-essential',
+        recommendation: 'Tighten ad group structure — move keyword to its own ad group with dedicated, highly relevant ad copy. Escalate to web team if landing page alignment is a factor.',
         impact: `QS ${qs} = ~${Math.round(8/qs * 10)/10}x higher CPC vs QS 10`
       });
     }
@@ -1174,7 +1185,7 @@ function generateOpts() {
         priority: 'P2', account_id: r.account_id, account_name: r.account_name,
         category: 'Search Terms',
         issue: `"${r.search_term}" — $${fmtNum(num(r.cost), 0)} spend, 0 conversions`,
-        recommendation: 'Add as negative keyword if irrelevant; review landing page alignment if relevant',
+        recommendation: 'Add as negative keyword if irrelevant to target services. If relevant, review ad copy alignment and escalate to web team for landing page review.',
         impact: `$${fmtNum(num(r.cost), 0)} potential wasted spend (30d)`
       });
     }
@@ -1190,7 +1201,7 @@ function generateOpts() {
         priority: 'P3', account_id: r.account_id, account_name: r.account_name,
         category: 'Quality Score',
         issue: `Keyword "${r.keyword_text}" [${r.match_type}] — QS ${qs}, $${fmtNum(cost, 0)} spend`,
-        recommendation: 'Review expected CTR, ad relevance, and landing page experience to raise QS',
+        recommendation: 'Review expected CTR and ad-to-keyword relevance. Tighten ad group structure to raise QS. Escalate to web team if landing page experience is a factor.',
         impact: `$${fmtNum(cost, 0)} spend with sub-optimal CPC efficiency`
       });
     }
@@ -1234,7 +1245,7 @@ function generateOpts() {
         priority: 'P2', account_id: a.account_id, account_name: a.account_name,
         category: 'Conversion',
         issue: `Conversions declined ${Math.abs(Math.round(t.convDelta))}% vs prior 30-day window (${fmtNum(t.convPrior, 1)} → ${fmtNum(t.convCurr, 1)})`,
-        recommendation: 'Review recent account changes: bid strategy updates, budget changes, keyword pauses, landing page edits. Check auction insights for competitive shifts.',
+        recommendation: 'Review recent account changes: bid strategy updates, budget changes, keyword pauses. Check auction insights for competitive shifts. Escalate to web team if landing page changes may be a factor.',
         impact: `${Math.abs(Math.round(t.convDelta))}% conversion decline — prioritize review`
       });
     } else if (t.convDelta < -10 && a.cost > 100 && a.conversions > 0) {
@@ -1259,7 +1270,7 @@ function generateOpts() {
           priority: 'P2', account_id: a.account_id, account_name: a.account_name,
           category: 'Conversion',
           issue: `CPA worsened ${Math.round(t.cpaDelta)}% vs prior 30-day window ($${fmtNum(t.cpaPrior || 0, 0)} → $${fmtNum(t.cpaCurr || 0, 0)})`,
-          recommendation: 'Review bid strategy, recent auction competition changes, and landing page performance. Consider adjusting target CPA if bidding is overaggressive.',
+          recommendation: 'Review bid strategy and recent auction competition changes. Consider adjusting target CPA if bidding is overaggressive. Escalate to web team if landing page performance may be a factor.',
           impact: 'Rising cost per lead — investigate before end of month'
         });
       }
@@ -1423,7 +1434,7 @@ function renderPortfolioAlerts() {
     if (pct > 40) alerts.push({
       cls: 'a-red', icon: '🚨',
       title: 'High CPA — ' + worst.account_name,
-      body: `CPA of <strong>$${fmtNum(worst.cpa, 0)}</strong> is <strong>${pct}% above</strong> portfolio average ($${fmtNum(avgCPA, 0)}). Review bid strategy, keyword intent, and landing page quality.`
+      body: `CPA of <strong>$${fmtNum(worst.cpa, 0)}</strong> is <strong>${pct}% above</strong> portfolio average ($${fmtNum(avgCPA, 0)}). Review bid strategy and keyword intent. Escalate to web team if landing page quality may be a factor.`
     });
   }
 
