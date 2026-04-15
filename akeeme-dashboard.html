@@ -460,6 +460,7 @@ const DEFAULT_URLS = {
 // ─── STATE ────────────────────────────────────────────────────
 let DATA = {};
 let OPTS = [];
+let GROUPED_OPTS = [];
 let ACCT_FILTER   = 'all';
 let CAMP_STATUS   = 'all';
 let CAMP_TYPE     = 'all';
@@ -559,6 +560,7 @@ function processAll() {
 
   // Generate opt recommendations (after trends so trend-based rules work)
   OPTS = generateOpts();
+  GROUPED_OPTS = groupOpts(OPTS);
 
   // Populate account dropdowns
   populateAccountDropdowns();
@@ -846,8 +848,8 @@ function renderKPIs() {
   const avgIS            = isAccts.length > 0 ? isAccts.reduce((s, a) => s + a.avg_is, 0) / isAccts.length : 0;
   const avgISB           = isAccts.length > 0 ? isAccts.reduce((s, a) => s + a.avg_isb, 0) / isAccts.length : 0;
   const totalCalls       = Object.values(CR_LOOKUP).reduce((s, c) => s + c.total_calls, 0);
-  const p1count          = OPTS.filter(o => o.priority === 'P1').length;
-  const p2count          = OPTS.filter(o => o.priority === 'P2').length;
+  const p1count          = GROUPED_OPTS.filter(o => o.priority === 'P1').length;
+  const p2count          = GROUPED_OPTS.filter(o => o.priority === 'P2').length;
 
   setText('k-accounts', totalAccounts);
   setText('k-spend',    '$' + fmtNum(totalSpend, 0));
@@ -857,7 +859,7 @@ function renderKPIs() {
   setText('k-is',       fmtNum(avgIS, 1) + '%');
   setText('k-isb',      fmtNum(avgISB, 1) + '%');
   setText('k-calls',    fmtNum(totalCalls, 0));
-  setText('k-opts',     OPTS.length);
+  setText('k-opts',     GROUPED_OPTS.length);
   setText('k-opts-sub', p1count + ' P1 · ' + p2count + ' P2');
 }
 
@@ -900,7 +902,7 @@ function renderAccountTable() {
 
   // Show-filter buttons
   if (ACCT_DISPLAY_FILTER === 'p1p2') {
-    const acctIdsWithHighOpts = new Set(OPTS.filter(o => o.priority === 'P1' || o.priority === 'P2').map(o => o.account_id));
+    const acctIdsWithHighOpts = new Set(GROUPED_OPTS.filter(o => o.priority === 'P1' || o.priority === 'P2').map(o => o.account_id));
     accounts = accounts.filter(a => acctIdsWithHighOpts.has(a.account_id));
   } else if (ACCT_DISPLAY_FILTER === 'gap') {
     accounts = accounts.filter(a => {
@@ -928,7 +930,7 @@ function renderAccountTable() {
 
   const rows = accounts.map(a => {
     const cr        = getCRData(a.account_id);
-    const acctOpts  = OPTS.filter(o => o.account_id === a.account_id);
+    const acctOpts  = GROUPED_OPTS.filter(o => o.account_id === a.account_id);
     const p1        = acctOpts.filter(o => o.priority === 'P1').length;
     const p2        = acctOpts.filter(o => o.priority === 'P2').length;
     const gapRatio  = a.conversions > 0 && cr.total_calls > 0 ? cr.total_calls / a.conversions : null;
@@ -1420,7 +1422,7 @@ function populateAccountDropdowns() {
 
 // ─── P1 ALERT ─────────────────────────────────────────────────
 function checkP1Alert() {
-  const p1 = OPTS.filter(o => o.priority === 'P1');
+  const p1 = GROUPED_OPTS.filter(o => o.priority === 'P1');
   const el  = document.getElementById('p1-alert');
   if (p1.length > 0) {
     const accounts = [...new Set(p1.map(o => o.account_name))].join(', ');
@@ -1440,10 +1442,10 @@ function checkP1Alert() {
 
 // ─── OPT BADGE ────────────────────────────────────────────────
 function renderOptBadge() {
-  const p1 = OPTS.filter(o => o.priority === 'P1').length;
+  const p1 = GROUPED_OPTS.filter(o => o.priority === 'P1').length;
   const el = document.getElementById('opt-badge');
-  if (OPTS.length > 0) {
-    el.innerHTML = ` <span style="display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;font-size:9px;font-weight:800;background:${p1 > 0 ? 'var(--coma)' : 'var(--ion)'};color:#fff;">${OPTS.length}</span>`;
+  if (GROUPED_OPTS.length > 0) {
+    el.innerHTML = ` <span style="display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;font-size:9px;font-weight:800;background:${p1 > 0 ? 'var(--coma)' : 'var(--ion)'};color:#fff;">${GROUPED_OPTS.length}</span>`;
   }
 }
 
@@ -1535,10 +1537,10 @@ function renderPortfolioAlerts() {
 
 // ─── OPT INSIGHTS ─────────────────────────────────────────────
 function renderOptInsights() {
-  const p1 = OPTS.filter(o => o.priority === 'P1').length;
-  const p2 = OPTS.filter(o => o.priority === 'P2').length;
+  const p1 = GROUPED_OPTS.filter(o => o.priority === 'P1').length;
+  const p2 = GROUPED_OPTS.filter(o => o.priority === 'P2').length;
   const totalAccts  = Object.values(ACCT_ROLLUPS).length;
-  const flaggedAccts = new Set(OPTS.map(o => o.account_id)).size;
+  const flaggedAccts = new Set(GROUPED_OPTS.map(o => o.account_id)).size;
 
   // Estimate inefficient spend: zero-conv search terms (≥$25) + zero-conv enabled campaigns (>$20/day)
   let wastedSpend = 0;
