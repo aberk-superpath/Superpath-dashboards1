@@ -1350,9 +1350,9 @@ function renderOptTable() {
   opts = groupOpts(opts);
 
   // Summary bar
-  const p1 = OPTS.filter(o => o.priority === 'P1').length;
-  const p2 = OPTS.filter(o => o.priority === 'P2').length;
-  const p3 = OPTS.filter(o => o.priority === 'P3').length;
+  const p1 = opts.filter(o => o.priority === 'P1').length;
+  const p2 = opts.filter(o => o.priority === 'P2').length;
+  const p3 = opts.filter(o => o.priority === 'P3').length;
   document.getElementById('opt-summary-bar').innerHTML = `
     <div class="opt-summary">
       <div class="opt-count">${opts.length} <span style="font-size:13px;font-weight:400;color:var(--nuc-45)">optimizations</span></div>
