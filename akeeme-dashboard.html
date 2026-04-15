@@ -1280,6 +1280,47 @@ function generateOpts() {
   return opts;
 }
 
+// ─── OPT GROUPING ─────────────────────────────────────────────
+const GROUPABLE_CATS = ['Quality Score', 'Ad Strength', 'Ad Coverage', 'Search Terms', 'Budget', 'Conversion'];
+
+function groupOpts(opts) {
+  const groups = {};
+  const result = [];
+
+  opts.forEach(o => {
+    if (GROUPABLE_CATS.indexOf(o.category) === -1) { result.push(o); return; }
+    const key = `${o.account_id}|${o.category}|${o.priority}`;
+    if (!groups[key]) groups[key] = [];
+    groups[key].push(o);
+  });
+
+  Object.values(groups).forEach(group => {
+    if (group.length === 1) { result.push(group[0]); return; }
+    const first = group[0];
+    const names = group.map(o => { const m = o.issue.match(/"([^"]+)"/); return m ? m[1] : o.issue.split('—')[0].trim(); });
+    const preview = names.slice(0, 3).map(n => `"${n}"`).join(', ');
+    const moreStr = names.length > 3 ? ` +${names.length - 3} more` : '';
+    const totalSpend = group.reduce((s, o) => { const m = o.impact.match(/\$([\d,]+)/); return s + (m ? parseFloat(m[1].replace(/,/g,'')) : 0); }, 0);
+    const spendStr = totalSpend > 0 ? ` — $${fmtNum(totalSpend, 0)} total spend` : '';
+    let label = first.category === 'Quality Score' ? `${group.length} keywords with low quality score`
+              : first.category === 'Ad Strength'   ? `${group.length} RSAs with weak ad strength`
+              : first.category === 'Ad Coverage'   ? `${group.length} ad groups with single active ad`
+              : first.category === 'Search Terms'  ? `${group.length} high-spend search terms with 0 conversions`
+              : first.category === 'Budget'        ? `${group.length} campaigns limited by budget`
+              : first.category === 'Conversion'    ? `${group.length} campaigns with conversion issues`
+              : `${group.length} ${first.category.toLowerCase()} issues`;
+    result.push({
+      priority: first.priority, account_id: first.account_id, account_name: first.account_name,
+      category: first.category,
+      issue: `${label} — ${preview}${moreStr}`,
+      recommendation: first.recommendation,
+      impact: `${group.length} items${spendStr}`,
+      _detail: group.map(o => o.issue).join('\n')
+    });
+  });
+  return result;
+}
+
 // ─── OPT TABLE ────────────────────────────────────────────────
 function setOptFilter(type, val, btn) {
   if (type === 'priority') {
@@ -1306,6 +1347,7 @@ function renderOptTable() {
   // Sort: P1 → P2 → P3, then by account name
   const pri = { P1: 0, P2: 1, P3: 2 };
   opts.sort((a, b) => pri[a.priority] - pri[b.priority] || a.account_name.localeCompare(b.account_name));
+  opts = groupOpts(opts);
 
   // Summary bar
   const p1 = OPTS.filter(o => o.priority === 'P1').length;
@@ -1343,6 +1385,7 @@ function renderOptTable() {
         <div class="expand-body">
           <div class="expand-label">Recommendation</div>
           <div class="expand-text">${esc(o.recommendation)}</div>
+          ${o._detail ? `<div class="expand-label" style="margin-top:10px">Affected Items</div><div class="expand-text" style="font-size:12px;white-space:pre-line;color:var(--nuc-55)">${esc(o._detail)}</div>` : ''}
         </div>
       </td>
     </tr>`;
